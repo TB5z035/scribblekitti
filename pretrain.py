@@ -6,20 +6,20 @@ import pytorch_lightning as pl
 import torch
 import torch.nn as nn
 import yaml
-from dataloader.semantickitti import SemanticKITTI
-from network.cylinder3d import Cylinder3D
 from pytorch_lightning import Trainer
 from pytorch_lightning.loggers import WandbLogger
 from sklearn.manifold import TSNE
 from torch.optim import Adam
 from torch.utils.data import DataLoader
 from torchmetrics import ConfusionMatrix
+
+import wandb
+from dataloader.semantickitti import SemanticKITTI
+from network.cylinder3d import Cylinder3D
 from utils.barlow_twins_loss import BarlowTwinsLoss
 from utils.consistency_loss import PartialConsistencyLoss
 from utils.evaluation import compute_iou
 from utils.lovasz import lovasz_softmax
-
-import wandb
 
 
 class LightningTrainer(pl.LightningModule):
@@ -44,7 +44,7 @@ class LightningTrainer(pl.LightningModule):
         output_b = self(self.network, fea_b, rpz_b)
         loss = self.loss(output_a, output_b)
 
-        self.log('pretrain_loss', loss, on_epoch=True, prog_bar=True)
+        self.log('pretrain_loss', loss, prog_bar=True)
 
         return loss
 
@@ -55,12 +55,7 @@ class LightningTrainer(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         rpz, fea, _ = batch
         output = self(self.network, fea, rpz)
-        return output
-
-    def validation_epoch_end(self, outputs):
-        features = torch.cat(outputs, dim=0).cpu().numpy()
-        print(len(features))
-        feature_embedded = TSNE(n_components=2, learning_rate='auto', init='random', perplexity=3).fit_transform(features[::50])
+        feature_embedded = TSNE(n_components=2, learning_rate=10, perplexity=15).fit_transform(output.cpu().numpy()[::500])
         wandb.log({"tsne": wandb.plot.scatter(wandb.Table(data=feature_embedded, columns=['x', 'y']), 'x', 'y')})
 
     def configure_optimizers(self):
