@@ -1,22 +1,22 @@
-import os
-import yaml
 import argparse
+import os
+
 import numpy as np
+import pytorch_lightning as pl
 import torch
 import torch.nn as nn
-from torch.utils.data import DataLoader
-from torch.optim import Adam
-
-import pytorch_lightning as pl
+import yaml
+from dataloader.semantickitti import SemanticKITTI
+from network.cylinder3d import Cylinder3D
 from pytorch_lightning import Trainer
 from pytorch_lightning.loggers import WandbLogger
+from torch.optim import Adam
+from torch.utils.data import DataLoader
 from torchmetrics import ConfusionMatrix
-
-from network.cylinder3d import Cylinder3D
-from dataloader.semantickitti import SemanticKITTI
-from utils.lovasz import lovasz_softmax
 from utils.consistency_loss import PartialConsistencyLoss
 from utils.evaluation import compute_iou
+from utils.lovasz import lovasz_softmax
+
 
 class LightningTrainer(pl.LightningModule):
     def __init__(self, config):

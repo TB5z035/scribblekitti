@@ -1,13 +1,15 @@
-import os, sys
 import argparse
-import yaml
+import os
+import pathlib
+import sys
+
+import h5py
 import numpy as np
 import torch
-from tqdm import tqdm
-import h5py
-import pathlib
-
+import yaml
 from dataloader.semantickitti import SemanticKITTI
+from tqdm import tqdm
+
 
 def load_dist(lidar, min_bound, max_bound, num_bins):
     bin_length = max_bound // num_bins
@@ -48,8 +50,8 @@ if __name__=='__main__':
     print('Determining global threshold k^(c,r)...')
     for i in tqdm(range(len(ds))):
         label_path = ds.label_paths[i]
-        pred = hf[os.path.join(label_path, 'pred')][()]
-        conf = hf[os.path.join(label_path, 'conf')][()]
+        pred = hf[os.path.join(label_path, 'pred')][()][0]
+        conf = hf[os.path.join(label_path, 'conf')][()][0]
         lidar = ds.get_lidar(i)
         dist = load_dist(lidar, config['min_bound'], config['max_bound'], k_count)
 
@@ -64,7 +66,7 @@ if __name__=='__main__':
                 bin_conf = conf[bin_mask][mask]
                 start = M[k][j]['count']
                 count = bin_conf.shape[0]
-                M[k][j]['conf'][start:start+count] = bin_conf
+                M[k][j]['conf'][start:start+count] = bin_conf[:, None]
                 M[k][j]['count'] += count
 
     # Get CRB thresholds for class-annuli pairings
@@ -84,8 +86,8 @@ if __name__=='__main__':
     learning_map_inv = np.asarray(list(config['dataset']['learning_map_inv'].values()))
     for i in tqdm(range(len(ds))):
         label_path = ds.label_paths[i]
-        pred = hf[os.path.join(label_path, 'pred')][()]
-        conf = hf[os.path.join(label_path, 'conf')][()]
+        pred = hf[os.path.join(label_path, 'pred')][()][0]
+        conf = hf[os.path.join(label_path, 'conf')][()][0]
         lidar = ds.get_lidar(i)
         dist = load_dist(lidar, config['min_bound'], config['max_bound'], k_count)
         scribbles = ds.get_label(i)
