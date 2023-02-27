@@ -6,20 +6,19 @@ import pytorch_lightning as pl
 import torch
 import torch.nn as nn
 import yaml
-from pytorch_lightning import Trainer
-from pytorch_lightning.loggers import WandbLogger
-from sklearn.manifold import TSNE
-from torch.optim import Adam
-from torch.utils.data import DataLoader
-from torchmetrics import ConfusionMatrix
-
-import wandb
 from dataloader.semantickitti import SemanticKITTI
 from network.cylinder3d import Cylinder3D
+from pytorch_lightning import Trainer
+from pytorch_lightning.loggers import WandbLogger
+from sklearnex import patch_sklearn
+from torch.optim import Adam
+from torch.utils.data import DataLoader
 from utils.barlow_twins_loss import BarlowTwinsLoss
-from utils.consistency_loss import PartialConsistencyLoss
-from utils.evaluation import compute_iou
-from utils.lovasz import lovasz_softmax
+
+import wandb
+
+patch_sklearn()
+from sklearn.manifold import TSNE
 
 
 class LightningTrainer(pl.LightningModule):
@@ -45,6 +44,8 @@ class LightningTrainer(pl.LightningModule):
         loss = self.loss(output_a, output_b)
 
         self.log('pretrain_loss', loss, prog_bar=True)
+        if self.global_rank == 0:
+            self.logger.experiment.log({"pretrain_loss": loss.item()})
 
         return loss
 
@@ -55,8 +56,14 @@ class LightningTrainer(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         rpz, fea, _ = batch
         output = self(self.network, fea, rpz)
-        feature_embedded = TSNE(n_components=2, learning_rate=10, perplexity=15).fit_transform(output.cpu().numpy()[::500])
-        wandb.log({"tsne": wandb.plot.scatter(wandb.Table(data=feature_embedded, columns=['x', 'y']), 'x', 'y')})
+        return output.cpu()[::10]
+
+    def validation_epoch_end(self, outputs) -> None:
+        features = torch.cat(outputs[::10], dim=0).cpu().numpy()[::10]
+        print('Number of features: ', len(features))
+        feature_embedded = TSNE(n_components=2, learning_rate='auto', perplexity=3).fit_transform(features)
+        if self.global_rank == 0:
+            self.logger.experiment.log({"tsne": wandb.plot.scatter(wandb.Table(data=feature_embedded, columns=['x', 'y']), 'x', 'y')})
 
     def configure_optimizers(self):
         optimizer = Adam(self.network.parameters(), **self.config['optimizer'])
@@ -82,14 +89,12 @@ class LightningTrainer(pl.LightningModule):
             self.color_map[i, :] = torch.tensor(dataset_config['color_map'][i][::-1], dtype=torch.float32)
 
     def get_model_callback(self):
-        dirpath = os.path.join(self.config['trainer']['default_root_dir'], self.config['logger']['project'])
-        checkpoint = pl.callbacks.ModelCheckpoint(dirpath=dirpath,
-                                                  filename='{epoch}')
+        dirpath = os.path.join(self.config['trainer']['default_root_dir'], self.config['logger']['project'], self.config['logger']['name'])
+        checkpoint = pl.callbacks.ModelCheckpoint(dirpath=dirpath, save_last=True, filename='epoch-{epoch:02d}', period=1)
         return [checkpoint]
 
 
 if __name__ == '__main__':
-    wandb.init("scribble-pretrain")
     parser = argparse.ArgumentParser()
     parser.add_argument('--config_path', default='config/training.yaml')
     parser.add_argument('--dataset_config_path', default='config/semantickitti.yaml')

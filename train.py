@@ -118,7 +118,7 @@ class LightningTrainer(pl.LightningModule):
             self.color_map[i,:] = torch.tensor(dataset_config['color_map'][i][::-1], dtype=torch.float32)
 
     def get_model_callback(self):
-        dirpath = os.path.join(self.config['trainer']['default_root_dir'], self.config['logger']['project'])
+        dirpath = os.path.join(self.config['trainer']['default_root_dir'], self.config['logger']['project'], self.config['logger']['name'])
         checkpoint = pl.callbacks.ModelCheckpoint(dirpath=dirpath, filename='{epoch}-{val_teacher_miou:.2f}',
                                                   monitor='val_teacher_miou', mode='max', save_top_k=3)
         return [checkpoint]

@@ -8,3 +8,5 @@ tqdm==4.59.0
 
 scikit-learn
 wandb
+scikit-learn-intelex
+yapf
