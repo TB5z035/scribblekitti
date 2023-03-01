@@ -11,3 +11,5 @@ wandb
 scikit-learn-intelex
 yapf
 setuptools==58.0
+cmake
+matplotlib

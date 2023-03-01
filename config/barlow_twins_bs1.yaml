@@ -21,7 +21,7 @@ val_dataset:
   bin_size: [[24,9],[48,18],[96,36]]
 
 train_dataloader:
-  batch_size: 4
+  batch_size: 1
   shuffle: True
   num_workers: 8
 
@@ -45,4 +45,4 @@ optimizer:
 
 logger:
   project: 'scribblekitti'
-  name: 'pretraining'
+  name: 'pretraining-bs1'

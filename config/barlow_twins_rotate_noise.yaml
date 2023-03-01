@@ -8,7 +8,7 @@ dataset:
   spatial_shape: [480,360,32]
   max_bound: [50,3.1415926,2]
   min_bound: [0,-3.1415926,-4]
-  aug: ['rotate', 'flip', 'noise']
+  aug: ['rotate', 'noise']
   bin_size: [[24,9],[48,18],[96,36]]
 
 val_dataset:
@@ -45,4 +45,4 @@ optimizer:
 
 logger:
   project: 'scribblekitti'
-  name: 'pretraining'
+  name: 'pretraining-r-n'

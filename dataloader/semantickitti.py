@@ -59,6 +59,11 @@ class Baseline(SemanticKITTI, prefix='baseline'):
             xyzr[:, :3] = self.augment(xyzr[:, :3], self.config['aug'])
         return torch.from_numpy(xyzr), \
                torch.from_numpy(label).squeeze().long()
+    
+    @staticmethod
+    def _collate_fn(batch):
+        xyzrs, labels = zip(*batch)
+        return xyzrs, labels
 
     def __len__(self):
         return len(self.lidar_paths)
@@ -138,6 +143,11 @@ class Cylindrical(Baseline, prefix='cylindrical'):
         return self.get_cylindrical_scene(xyzr, label, self.config['aug'])
 
     @staticmethod
+    def _collate_fn(batch):
+        xyzrs, feas, labels = zip(*batch)
+        return xyzrs, feas, labels
+
+    @staticmethod
     def cart2cyl(xyz):
         rho = np.sqrt(xyz[:, 0]**2 + xyz[:, 1]**2)
         phi = np.arctan2(xyz[:, 1], xyz[:, 0])
@@ -168,6 +178,14 @@ class CylindricalMT(Cylindrical, prefix='cylindrical_mt'):
         return {
             'student': self.get_cylindrical_scene(xyzr, label, self.config['aug']['student']),
             'teacher': self.get_cylindrical_scene(xyzr, label, self.config['aug']['teacher'])
+        }
+    @staticmethod
+    def _collate_fn(batch):
+        stu_xyzrs, stu_feas, stu_labels = zip(*batch['student'])
+        tea_xyzrs, tea_feas, tea_labels = zip(*batch['teacher'])
+        return {
+            'student': (stu_xyzrs, stu_feas, stu_labels),
+            'teacher': (tea_xyzrs, tea_feas, tea_labels)
         }
 
 class PLSCylindrical(Cylindrical, prefix='pls_cylindrical'):
@@ -231,6 +249,16 @@ class CylindricalTwin(Cylindrical, prefix='cylindrical_twin'):
             self.get_cylindrical_scene(xyzr, label, self.config['aug']),
             self.get_cylindrical_scene(xyzr, label, self.config['aug']),
         ]
+    @staticmethod
+    def _collate_fn(batch):
+        list_branch_1, list_branch_2 = zip(*batch)
+        stu_xyzrs, stu_feas, stu_labels = zip(*list_branch_1)
+        tea_xyzrs, tea_feas, tea_labels = zip(*list_branch_2)
+        return [
+            (tea_xyzrs, tea_feas, tea_labels),
+            (stu_xyzrs, stu_feas, stu_labels)
+        ]
+
 
 class PLSCylindricalTwin(CylindricalTwin, PLSCylindrical, prefix='pls_cylindrical_twin'):
     pass

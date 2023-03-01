@@ -35,7 +35,7 @@ class LightningTrainer(pl.LightningModule):
         self.save_hyperparameters('config')
 
     def forward(self, model, fea, pos):
-        _, features = model([fea.squeeze(0)], [pos.squeeze(0)], 1)
+        _, features = model(fea, pos, len(fea))
         return features
 
     def training_step(self, batch, batch_idx):
@@ -83,10 +83,10 @@ class LightningTrainer(pl.LightningModule):
         self.val_dataset = SemanticKITTI(split='valid', config=self.config['val_dataset'])
 
     def train_dataloader(self):
-        return DataLoader(dataset=self.train_dataset, **self.config['train_dataloader'])
+        return DataLoader(dataset=self.train_dataset, collate_fn=self.train_dataset._collate_fn, **self.config['train_dataloader'])
 
     def val_dataloader(self):
-        return DataLoader(dataset=self.val_dataset, **self.config['val_dataloader'])
+        return DataLoader(dataset=self.val_dataset, collate_fn=self.val_dataset._collate_fn, **self.config['val_dataloader'])
 
     def _load_dataset_info(self) -> None:
         dataset_config = self.config['dataset']
