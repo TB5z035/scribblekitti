@@ -52,7 +52,8 @@ class LightningTrainer(pl.LightningModule):
 
     def training_epoch_end(self, outputs) -> None:
         os.makedirs('output/scribblekitti/network/', exist_ok=True)
-        torch.save(self.network.state_dict(), f'output/scribblekitti/network/{self.current_epoch}.ckpt')
+        os.makedirs(os.path.join(self.config['trainer']['default_root_dir'], self.config['logger']['project'], self.config['logger']['name'], 'model'), exist_ok=True)
+        torch.save(self.network.state_dict(), os.path.join(self.config['trainer']['default_root_dir'], self.config['logger']['project'], self.config['logger']['name'], 'model', f'{self.current_epoch}.ckpt'))
 
     def validation_step(self, batch, batch_idx):
         if self.global_rank == 0:
@@ -98,7 +99,7 @@ class LightningTrainer(pl.LightningModule):
             self.color_map[i, :] = torch.tensor(dataset_config['color_map'][i][::-1], dtype=torch.float32)
 
     def get_model_callback(self):
-        dirpath = os.path.join(self.config['trainer']['default_root_dir'], self.config['logger']['project'], self.config['logger']['name'])
+        dirpath = os.path.join(self.config['trainer']['default_root_dir'], self.config['logger']['project'], self.config['logger']['name'], 'pl_ckpt')
         checkpoint = pl.callbacks.ModelCheckpoint(dirpath=dirpath, save_last=True, filename='epoch-{epoch:02d}', period=1)
         return [checkpoint]
 
