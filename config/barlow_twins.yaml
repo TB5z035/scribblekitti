@@ -45,4 +45,4 @@ optimizer:
 
 logger:
   project: 'scribblekitti'
-  name: 'pretraining'
+  name: placeholder # `name` has no effect

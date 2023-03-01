@@ -114,9 +114,9 @@ if __name__ == '__main__':
         config['dataset'].update(yaml.safe_load(f))
     with open(args.dataset_config_path, 'r') as f:
         config['val_dataset'].update(yaml.safe_load(f))
-    # Bugs
+
+    config['logger']['name'] = args.config_path.split('/')[-1][:-5]
+
     wandb_logger = WandbLogger(config=config, save_dir=config['trainer']['default_root_dir'], **config['logger'])
-    # wandb_logger = TensorBoardLogger(save_dir=config['trainer']['default_root_dir'], name=os.path.join(config['logger']['project'], config['logger']['name']))
     model = LightningTrainer(config)
-    tr = Trainer(logger=wandb_logger, callbacks=model.get_model_callback(), **config['trainer'])
-    tr.fit(model)
+    Trainer(logger=wandb_logger, callbacks=model.get_model_callback(), **config['trainer']).fit(model)
