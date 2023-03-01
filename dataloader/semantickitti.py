@@ -170,7 +170,6 @@ class CylindricalMT(Cylindrical, prefix='cylindrical_mt'):
             'teacher': self.get_cylindrical_scene(xyzr, label, self.config['aug']['teacher'])
         }
 
-
 class PLSCylindrical(Cylindrical, prefix='pls_cylindrical'):
 
     def __init__(self, split, config, nclasses=20):
@@ -214,6 +213,12 @@ class PLSCylindrical(Cylindrical, prefix='pls_cylindrical'):
             pyramid_semantic_context[:, i] = local_semantic_context
         return pyramid_semantic_context.reshape(N, -1)
 
+class PLSCylindricalSample(PLSCylindrical, prefix='pls_cylindrical_sample'):
+    def __init__(self, split, config, nclasses=20):
+        super().__init__(split, config, nclasses)
+        self.lidar_paths = self.lidar_paths[::100]
+        self.label_paths = self.label_paths[::100]
+
 class PLSCylindricalMT(CylindricalMT, PLSCylindrical, prefix='pls_cylindrical_mt'):
     pass
 
@@ -228,4 +233,11 @@ class CylindricalTwin(Cylindrical, prefix='cylindrical_twin'):
         ]
 
 class PLSCylindricalTwin(CylindricalTwin, PLSCylindrical, prefix='pls_cylindrical_twin'):
+    pass
+
+class PLSCylindricalTwinSample(PLSCylindricalTwin, prefix='pls_cylindrical_twin_sample'):
+    def __init__(self, split, config, nclasses=20):
+        super().__init__(split, config, nclasses)
+        self.lidar_paths = self.lidar_paths[::1000]
+        self.label_paths = self.label_paths[::1000]
     pass

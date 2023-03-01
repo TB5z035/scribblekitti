@@ -1,6 +1,7 @@
 import argparse
 import os
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pytorch_lightning as pl
 import torch
@@ -9,7 +10,7 @@ import yaml
 from dataloader.semantickitti import SemanticKITTI
 from network.cylinder3d import Cylinder3D
 from pytorch_lightning import Trainer
-from pytorch_lightning.loggers import WandbLogger
+from pytorch_lightning.loggers import TensorBoardLogger, WandbLogger
 from sklearnex import patch_sklearn
 from torch.optim import Adam
 from torch.utils.data import DataLoader
@@ -50,20 +51,28 @@ class LightningTrainer(pl.LightningModule):
         return loss
 
     def training_epoch_end(self, outputs) -> None:
-        if self.current_epoch % 10 == 9:
-            torch.save(self.network.state_dict(), 'output/scribblekitti/network.ckpt')
+        os.makedirs('output/scribblekitti/network/', exist_ok=True)
+        torch.save(self.network.state_dict(), f'output/scribblekitti/network/{self.current_epoch}.ckpt')
 
     def validation_step(self, batch, batch_idx):
-        rpz, fea, _ = batch
-        output = self(self.network, fea, rpz)
-        return output.cpu()[::10]
+        if self.global_rank == 0:
+            rpz, fea, _ = batch
+            output = self(self.network, fea, rpz)
+            return output.cpu()[::10]
+        else:
+            return None
 
     def validation_epoch_end(self, outputs) -> None:
-        features = torch.cat(outputs[::10], dim=0).cpu().numpy()[::10]
-        print('Number of features: ', len(features))
-        feature_embedded = TSNE(n_components=2, learning_rate='auto', perplexity=3).fit_transform(features)
         if self.global_rank == 0:
-            self.logger.experiment.log({"tsne": wandb.plot.scatter(wandb.Table(data=feature_embedded, columns=['x', 'y']), 'x', 'y')})
+            features = torch.cat(outputs, dim=0).cpu().numpy()
+            print('Number of features: ', len(features))
+            feature_embedded = TSNE(n_components=2, learning_rate='auto', perplexity=3).fit_transform(features)
+            os.makedirs(os.path.join(self.config['trainer']['default_root_dir'], self.config['logger']['project'], self.config['logger']['name'], 'tsne'), exist_ok=True)
+            dirpath = os.path.join(self.config['trainer']['default_root_dir'], self.config['logger']['project'], self.config['logger']['name'], 'tsne', f'{self.current_epoch}.png')
+            plt.scatter(feature_embedded[:, 0], feature_embedded[:, 1], s=1)
+            plt.savefig(dirpath, dpi=600)
+            plt.cla()
+            # self.logger.experiment.log({"tsne": wandb.plot.scatter(wandb.Table(data=feature_embedded, columns=['x', 'y']), 'x', 'y')})
 
     def configure_optimizers(self):
         optimizer = Adam(self.network.parameters(), **self.config['optimizer'])
@@ -93,16 +102,21 @@ class LightningTrainer(pl.LightningModule):
         checkpoint = pl.callbacks.ModelCheckpoint(dirpath=dirpath, save_last=True, filename='epoch-{epoch:02d}', period=1)
         return [checkpoint]
 
-
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--config_path', default='config/training.yaml')
     parser.add_argument('--dataset_config_path', default='config/semantickitti.yaml')
     args = parser.parse_args()
 
-    config = yaml.safe_load(open(args.config_path, 'r'))
-    config['dataset'].update(yaml.safe_load(open(args.dataset_config_path, 'r')))
-    config['val_dataset'].update(yaml.safe_load(open(args.dataset_config_path, 'r')))
+    with open(args.config_path, 'r') as f:
+        config = yaml.safe_load(f)
+    with open(args.dataset_config_path, 'r') as f:
+        config['dataset'].update(yaml.safe_load(f))
+    with open(args.dataset_config_path, 'r') as f:
+        config['val_dataset'].update(yaml.safe_load(f))
+    # Bugs
     wandb_logger = WandbLogger(config=config, save_dir=config['trainer']['default_root_dir'], **config['logger'])
+    # wandb_logger = TensorBoardLogger(save_dir=config['trainer']['default_root_dir'], name=os.path.join(config['logger']['project'], config['logger']['name']))
     model = LightningTrainer(config)
-    Trainer(logger=wandb_logger, callbacks=model.get_model_callback(), **config['trainer']).fit(model)
+    tr = Trainer(logger=wandb_logger, callbacks=model.get_model_callback(), **config['trainer'])
+    tr.fit(model)

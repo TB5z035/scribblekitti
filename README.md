@@ -69,9 +69,6 @@ sudo apt-get install libboost-all-dev
 CUDACXX=/usr/local/cuda/bin/nvcc python setup.py bdist_wheel
 pip install dist/spconv-1.2.1-cp38-cp38-linux_x86_64.whl
 
-sudo apt-get install intel-mkl
-conda install faiss-gpu -c pytorch
-pip install tsnecuda from wheel
 # https://github.com/eddelbuettel/mkl4deb
 ```
 Futhermore install the following dependencies:

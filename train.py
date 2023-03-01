@@ -25,6 +25,12 @@ class LightningTrainer(pl.LightningModule):
         self._load_dataset_info()
         self.student = Cylinder3D(nclasses=self.nclasses, **config['model'])
         self.teacher = Cylinder3D(nclasses=self.nclasses, **config['model'])
+        if 'load_checkpoint' in self.config['trainer']:
+            ckpt_path = self.config['trainer']['load_checkpoint']
+            state_dict = torch.load(ckpt_path)
+            self.student.load_state_dict(state_dict)
+            self.teacher.load_state_dict(state_dict)
+            print('loaded checkpoint from ' + ckpt_path)
         self.initialize_teacher()
 
         self.loss_ls = lovasz_softmax
@@ -38,7 +44,7 @@ class LightningTrainer(pl.LightningModule):
         self.save_hyperparameters('config')
 
     def forward(self, model, fea, pos):
-        output_voxel = model([fea.squeeze(0)], [pos.squeeze(0)], 1)
+        output_voxel, _ = model([fea.squeeze(0)], [pos.squeeze(0)], 1)
         return output_voxel[:, :, pos[0,:,0], pos[0,:,1], pos[0,:,2]]
 
     def training_step(self, batch, batch_idx):

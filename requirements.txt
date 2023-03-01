@@ -10,3 +10,4 @@ scikit-learn
 wandb
 scikit-learn-intelex
 yapf
+setuptools==58.0
