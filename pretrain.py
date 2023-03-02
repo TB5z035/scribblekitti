@@ -15,6 +15,7 @@ from sklearnex import patch_sklearn
 from torch.optim import Adam
 from torch.utils.data import DataLoader
 from utils.barlow_twins_loss import BarlowTwinsLoss
+import shutil
 
 import wandb
 
@@ -51,7 +52,6 @@ class LightningTrainer(pl.LightningModule):
         return loss
 
     def training_epoch_end(self, outputs) -> None:
-        os.makedirs('output/scribblekitti/network/', exist_ok=True)
         os.makedirs(os.path.join(self.config['trainer']['default_root_dir'], self.config['logger']['project'], self.config['logger']['name'], 'model'), exist_ok=True)
         torch.save(self.network.state_dict(), os.path.join(self.config['trainer']['default_root_dir'], self.config['logger']['project'], self.config['logger']['name'], 'model', f'{self.current_epoch}.ckpt'))
 
@@ -117,6 +117,11 @@ if __name__ == '__main__':
         config['val_dataset'].update(yaml.safe_load(f))
 
     config['logger']['name'] = args.config_path.split('/')[-1][:-5]
+
+    base_dir = os.path.join(config['trainer']['default_root_dir'], config['logger']['project'], config['logger']['name'])
+    os.makedirs(base_dir, exist_ok=True)
+    shutil.copy2(args.config_path, os.path.join(base_dir, 'config.yaml'))
+    shutil.copy2(args.dataset_config_path, os.path.join(base_dir, 'dataset_config.yaml'))
 
     wandb_logger = WandbLogger(config=config, save_dir=config['trainer']['default_root_dir'], **config['logger'])
     model = LightningTrainer(config)
