@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 
+
 class PartialConsistencyLoss(nn.Module):
     def __init__(self, H, ignore_index=0):
         super().__init__()
@@ -18,7 +19,7 @@ class PartialConsistencyLoss(nn.Module):
         return self.supervised_loss(student_output, student_label)
 
     def compute_consistency_loss(self, student_output, teacher_output, mask=None):
-        student_output_reshaped = student_output.permute(0,2,1).log_softmax(-1) 
-        teacher_output_reshaped = teacher_output.permute(0,2,1).softmax(-1)
+        student_output_reshaped = student_output.log_softmax(-1) 
+        teacher_output_reshaped = teacher_output.softmax(-1)
         return self.consistency_loss(student_output_reshaped[mask],
                                      teacher_output_reshaped[mask])

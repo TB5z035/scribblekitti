@@ -1,5 +1,6 @@
 import argparse
 import os
+import shutil
 
 import numpy as np
 import pytorch_lightning as pl
@@ -43,17 +44,22 @@ class LightningTrainer(pl.LightningModule):
 
         self.save_hyperparameters('config')
 
-    def forward(self, model, fea, pos):
-        output_voxel, _ = model([fea.squeeze(0)], [pos.squeeze(0)], 1)
-        return output_voxel[:, :, pos[0,:,0], pos[0,:,1], pos[0,:,2]]
+    def forward(self, model, fea, pos, batch_size):
+        output_voxel, _ = model(fea, pos, batch_size)
+        outputs = []
+        for i in range(batch_size):
+            outputs.append(output_voxel[i, :, pos[i][:, 0], pos[i][:, 1], pos[i][:, 2]])
+        return torch.cat(outputs, dim=1).T # (\sigma Bi*Ni, C)
 
     def training_step(self, batch, batch_idx):
         self.update_teacher()
         student_rpz, student_fea, student_label = batch['student']
         teacher_rpz, teacher_fea, _ = batch['teacher']
+        batch_size = len(student_rpz)
+        student_label = torch.cat(student_label, dim=0)
 
-        student_output = self(self.student, student_fea, student_rpz)
-        teacher_output = self(self.teacher, teacher_fea, teacher_rpz)
+        student_output = self(self.student, student_fea, student_rpz, batch_size)
+        teacher_output = self(self.teacher, teacher_fea, teacher_rpz, batch_size)
         loss = self.loss_cl(student_output, teacher_output, student_label) + \
                self.loss_ls(student_output.softmax(1), student_label, ignore=0)
 
@@ -63,16 +69,21 @@ class LightningTrainer(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         student_rpz, student_fea, student_label = batch['student']
         teacher_rpz, teacher_fea, teacher_label = batch['teacher']
+        batch_size = len(student_rpz)
 
-        student_output = self(self.student, student_fea, student_rpz)
-        teacher_output = self(self.teacher, teacher_fea, teacher_rpz)
+        student_label = torch.cat(student_label, dim=0)
+        teacher_label = torch.cat(teacher_label, dim=0)
+
+        student_output = self(self.student, student_fea, student_rpz, batch_size)
+        teacher_output = self(self.teacher, teacher_fea, teacher_rpz, batch_size)
+
         loss = self.loss_cl(student_output, teacher_output, student_label) + \
                self.loss_ls(student_output.softmax(1), student_label, ignore=0)
 
         self.log('val_loss', loss, on_epoch=True, prog_bar=True)
         mask = (teacher_label!=0).squeeze()
-        self.student_cm.update(student_output.argmax(1)[:,mask], student_label[:,mask])
-        self.teacher_cm.update(teacher_output.argmax(1)[:,mask], teacher_label[:,mask])
+        self.student_cm.update(student_output.argmax(1)[mask], student_label[mask])
+        self.teacher_cm.update(teacher_output.argmax(1)[mask], teacher_label[mask])
 
     def validation_epoch_end(self, outputs):
         _, student_miou = compute_iou(self.student_cm.compute(), ignore_zero=True)
@@ -97,13 +108,13 @@ class LightningTrainer(pl.LightningModule):
 
     def setup(self, stage):
         self.train_dataset = SemanticKITTI(split='train', config=self.config['dataset'])
-        self.val_dataset = SemanticKITTI(split='valid', config=self.config['dataset'])
+        self.val_dataset = SemanticKITTI(split='valid', config=self.config['val_dataset'])
 
     def train_dataloader(self):
-        return DataLoader(dataset=self.train_dataset, **self.config['train_dataloader'])
+        return DataLoader(dataset=self.train_dataset, collate_fn=self.train_dataset._collate_fn, **self.config['train_dataloader'])
 
     def val_dataloader(self):
-        return DataLoader(dataset=self.val_dataset, **self.config['val_dataloader'])
+        return DataLoader(dataset=self.val_dataset, collate_fn=self.val_dataset._collate_fn, **self.config['val_dataloader'])
 
     def initialize_teacher(self) -> None:
         self.alpha = 0.99 # TODO: Move to config
@@ -136,8 +147,20 @@ if __name__=='__main__':
     parser.add_argument('--dataset_config_path', default='config/semantickitti.yaml')
     args = parser.parse_args()
 
-    config =  yaml.safe_load(open(args.config_path, 'r'))
-    config['dataset'].update(yaml.safe_load(open(args.dataset_config_path, 'r')))
+    with open(args.config_path, 'r') as f:
+        config = yaml.safe_load(f)
+    with open(args.dataset_config_path, 'r') as f:
+        config['dataset'].update(yaml.safe_load(f))
+    with open(args.dataset_config_path, 'r') as f:
+        config['val_dataset'].update(yaml.safe_load(f))
+
+    config['logger']['name'] = args.config_path.split('/')[-1][:-5]
+
+    base_dir = os.path.join(config['trainer']['default_root_dir'], config['logger']['project'], config['logger']['name'])
+    os.makedirs(base_dir, exist_ok=True)
+    shutil.copy2(args.config_path, os.path.join(base_dir, 'config.yaml'))
+    shutil.copy2(args.dataset_config_path, os.path.join(base_dir, 'dataset_config.yaml'))
+
     wandb_logger = WandbLogger(config=config,
                                save_dir=config['trainer']['default_root_dir'],
                                **config['logger'])

@@ -140,7 +140,7 @@ class Cylindrical(Baseline, prefix='cylindrical'):
     def __getitem__(self, idx):
         xyzr = self.get_lidar(idx)
         label = self.get_label(idx)
-        return self.get_cylindrical_scene(xyzr, label, self.config['aug'])
+        return self.get_cylindrical_scene(xyzr, label, self.config.get('aug', None))
 
     @staticmethod
     def _collate_fn(batch):
@@ -180,17 +180,23 @@ class CylindricalMT(Cylindrical, prefix='cylindrical_mt'):
     def __getitem__(self, idx):
         xyzr = self.get_lidar(idx)
         label = self.get_label(idx)
+        if 'aug' in self.config:
+            student_aug = self.config['aug']['student']
+            teacher_aug = self.config['aug']['teacher']
+        else:
+            student_aug = teacher_aug = None
         return {
-            'student': self.get_cylindrical_scene(xyzr, label, self.config['aug']['student']),
-            'teacher': self.get_cylindrical_scene(xyzr, label, self.config['aug']['teacher'])
+            'student': self.get_cylindrical_scene(xyzr, label, student_aug),
+            'teacher': self.get_cylindrical_scene(xyzr, label, teacher_aug)
         }
     @staticmethod
     def _collate_fn(batch):
-        stu_xyzrs, stu_feas, stu_labels = zip(*batch['student'])
-        tea_xyzrs, tea_feas, tea_labels = zip(*batch['teacher'])
+        batch_size = len(batch)
+        stu_xyzrs, stu_feas, stu_labels = zip(*[i['student'] for i in batch])
+        tea_xyzrs, tea_feas, tea_labels = zip(*[i['teacher'] for i in batch])
         return {
             'student': (stu_xyzrs, stu_feas, stu_labels),
-            'teacher': (tea_xyzrs, tea_feas, tea_labels)
+            'teacher': (tea_xyzrs, tea_feas, tea_labels),
         }
 
 class PLSCylindrical(Cylindrical, prefix='pls_cylindrical'):
@@ -251,8 +257,8 @@ class CylindricalTwin(Cylindrical, prefix='cylindrical_twin'):
         xyzr = self.get_lidar(idx)
         label = self.get_label(idx)
         return [
-            self.get_cylindrical_scene(xyzr, label, self.config['aug']),
-            self.get_cylindrical_scene(xyzr, label, self.config['aug']),
+            self.get_cylindrical_scene(xyzr, label, self.config.get('aug', None)),
+            self.get_cylindrical_scene(xyzr, label, self.config.get('aug', None)),
         ]
     @staticmethod
     def _collate_fn(batch):
@@ -274,3 +280,25 @@ class PLSCylindricalTwinSample(PLSCylindricalTwin, prefix='pls_cylindrical_twin_
         self.lidar_paths = self.lidar_paths[::1000]
         self.label_paths = self.label_paths[::1000]
     pass
+
+
+
+if __name__ == '__main__':
+    import yaml
+    config_path = 'config/train/cylinder3d/cylinder3d_mt.yaml'
+    dataset_config_path = 'config/dataset/semantickitti.yaml'
+
+    with open(config_path, 'r') as f:
+        config = yaml.safe_load(f)
+    with open(dataset_config_path, 'r') as f:
+        config['dataset'].update(yaml.safe_load(f))
+    with open(dataset_config_path, 'r') as f:
+        config['val_dataset'].update(yaml.safe_load(f))
+    from torch.utils.data import DataLoader
+    dataset = SemanticKITTI(split='train', config=config['dataset'])
+    val_dataset = SemanticKITTI(split='valid', config=config['val_dataset'])
+    loader = DataLoader(dataset=dataset, collate_fn=dataset._collate_fn, **config['train_dataloader'])
+    val_loader = DataLoader(dataset=dataset, collate_fn=dataset._collate_fn, **config['val_dataloader'])
+
+    from IPython import embed
+    embed()
