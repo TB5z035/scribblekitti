@@ -170,8 +170,8 @@ class Cylindrical(Baseline, prefix='cylindrical'):
                torch.from_numpy(label).squeeze().long()
 
 class CylindricalSample(Cylindrical, prefix='cylindrical_sample'):
-    def __init__(self, split, config, nclasses=20):
-        super().__init__(split, config, nclasses)
+    def __init__(self, split, config, *args, **kwargs):
+        super().__init__(split, config, *args, **kwargs)
         self.lidar_paths = self.lidar_paths[::100]
         self.label_paths = self.label_paths[::100]
 

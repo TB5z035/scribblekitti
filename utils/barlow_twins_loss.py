@@ -6,8 +6,8 @@ class TwinsLoss(nn.Module):
     def __init__(self) -> None:
         super().__init__()
 
-    def __call__(self, feature_a, feature_b):
-        return self.forward(feature_a, feature_b)
+    # def __call__(self, feature_a, feature_b):
+    #     return self.forward(feature_a, feature_b)
 
     def _assert_feat(self, feature_a, feature_b):
         batch_size_a, feature_size_a = feature_a.shape

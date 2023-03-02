@@ -7,6 +7,7 @@ import numpy as np
 import pytorch_lightning as pl
 import torch
 import torch.nn as nn
+import wandb
 import yaml
 from dataloader.semantickitti import SemanticKITTI
 from network.cylinder3d import Cylinder3DProject
@@ -15,13 +16,15 @@ from pytorch_lightning.loggers import TensorBoardLogger, WandbLogger
 from sklearnex import patch_sklearn
 from torch.optim import Adam
 from torch.utils.data import DataLoader
-from utils.barlow_twins_loss import BarlowTwinsLoss
-
-import wandb
+from utils.barlow_twins_loss import BarlowTwinsLoss, MECTwinsLoss
 
 patch_sklearn()
 from sklearn.manifold import TSNE
 
+PRETRAIN_LOSS = {
+    'barlow_twins': BarlowTwinsLoss,
+    'mec': MECTwinsLoss
+}
 
 class LightningTrainer(pl.LightningModule):
 
@@ -31,7 +34,10 @@ class LightningTrainer(pl.LightningModule):
         self._load_dataset_info()
         self.network = Cylinder3DProject(nclasses=self.nclasses, **config['model'])
 
-        self.loss = BarlowTwinsLoss()
+        if 'pretrain_loss' not in self.config:
+            self.loss = BarlowTwinsLoss()
+        else:
+            self.loss = PRETRAIN_LOSS[self.config['pretrain_loss']]()
 
         self.save_hyperparameters('config')
 
