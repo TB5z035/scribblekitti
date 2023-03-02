@@ -25,14 +25,19 @@ class LightningTrainer(pl.LightningModule):
         self.config = config
         self._load_dataset_info()
         self.student = Cylinder3D(nclasses=self.nclasses, **config['model'])
+        self.teacher = Cylinder3D(nclasses=self.nclasses, **config['model'])
         if 'load_checkpoint' in self.config['trainer']:
             ckpt_path = self.config['trainer']['load_checkpoint']
             state_dict = torch.load(ckpt_path)
             self.student.load_state_dict(state_dict)
+            self.teacher.load_state_dict(state_dict)
             print('loaded checkpoint from ' + ckpt_path)
+        self.initialize_teacher()
 
         self.loss_ls = lovasz_softmax
+        self.loss_cl = PartialConsistencyLoss(H=nn.CrossEntropyLoss, ignore_index=0)
 
+        self.teacher_cm = ConfusionMatrix(self.nclasses)
         self.student_cm = ConfusionMatrix(self.nclasses)
         self.best_miou = 0
         self.best_iou = np.zeros((self.nclasses-1,))
@@ -47,40 +52,53 @@ class LightningTrainer(pl.LightningModule):
         return torch.cat(outputs, dim=1).T # (\sigma Bi*Ni, C)
 
     def training_step(self, batch, batch_idx):
+        self.update_teacher()
         student_rpz, student_fea, student_label = batch['student']
+        teacher_rpz, teacher_fea, _ = batch['teacher']
         batch_size = len(student_rpz)
         student_label = torch.cat(student_label, dim=0)
 
         student_output = self(self.student, student_fea, student_rpz, batch_size)
-        loss = self.loss_ls(student_output.softmax(1), student_label, ignore=0)
+        teacher_output = self(self.teacher, teacher_fea, teacher_rpz, batch_size)
+        loss = self.loss_cl(student_output, teacher_output, student_label) + \
+               self.loss_ls(student_output.softmax(1), student_label, ignore=0)
 
         self.log('train_loss', loss, on_epoch=True, prog_bar=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
-        student_rpz, student_fea, student_label = batch
+        student_rpz, student_fea, student_label = batch['student']
+        teacher_rpz, teacher_fea, teacher_label = batch['teacher']
         batch_size = len(student_rpz)
 
         student_label = torch.cat(student_label, dim=0)
+        teacher_label = torch.cat(teacher_label, dim=0)
 
         student_output = self(self.student, student_fea, student_rpz, batch_size)
+        teacher_output = self(self.teacher, teacher_fea, teacher_rpz, batch_size)
 
-        loss = self.loss_ls(student_output.softmax(1), student_label, ignore=0)
+        loss = self.loss_cl(student_output, teacher_output, student_label) + \
+               self.loss_ls(student_output.softmax(1), student_label, ignore=0)
 
         self.log('val_loss', loss, on_epoch=True, prog_bar=True)
-        mask = (student_label!=0).squeeze()
+        mask = (teacher_label!=0).squeeze()
         self.student_cm.update(student_output.argmax(1)[mask], student_label[mask])
+        self.teacher_cm.update(teacher_output.argmax(1)[mask], teacher_label[mask])
 
     def validation_epoch_end(self, outputs):
-        student_iou, student_miou = compute_iou(self.student_cm.compute(), ignore_zero=True)
+        _, student_miou = compute_iou(self.student_cm.compute(), ignore_zero=True)
         self.student_cm.reset()
-        for class_name, class_iou in zip(self.unique_name, student_iou):
-            self.log('val_student_iou_{}'.format(class_name), class_iou * 100)
         self.log('val_student_miou', student_miou, on_epoch=True, prog_bar=True)
 
-        if student_miou > self.best_miou:
-            self.best_miou = student_miou
-            self.best_iou = np.nan_to_num(student_iou) * 100
+        teacher_iou, teacher_miou = compute_iou(self.teacher_cm.compute(), ignore_zero=True)
+        self.teacher_cm.reset()
+        for class_name, class_iou in zip(self.unique_name, teacher_iou):
+            self.log('val_teacher_iou_{}'.format(class_name), class_iou * 100)
+        self.log('val_teacher_miou', teacher_miou, on_epoch=True, prog_bar=True)
+
+        if teacher_miou > self.best_miou:
+            self.best_miou = teacher_miou
+            self.best_iou = np.nan_to_num(teacher_iou) * 100
         self.log('val_best_miou', self.best_miou, on_epoch=True, prog_bar=True)
         self.log('val_best_iou', self.best_iou, on_epoch=True, prog_bar=False)
 
@@ -98,6 +116,15 @@ class LightningTrainer(pl.LightningModule):
     def val_dataloader(self):
         return DataLoader(dataset=self.val_dataset, collate_fn=self.val_dataset._collate_fn, **self.config['val_dataloader'])
 
+    def initialize_teacher(self) -> None:
+        self.alpha = 0.99 # TODO: Move to config
+        for p in self.teacher.parameters(): p.detach_()
+
+    def update_teacher(self) -> None:
+        alpha = min(1 - 1 / (self.global_step + 1), self.alpha)
+        for tp, sp in zip(self.teacher.parameters(), self.student.parameters()):
+            tp.data.mul_(alpha).add_(1 - alpha, sp.data)
+
     def _load_dataset_info(self) -> None:
         dataset_config = self.config['dataset']
         self.nclasses = len(dataset_config['labels'])
@@ -109,8 +136,8 @@ class LightningTrainer(pl.LightningModule):
 
     def get_model_callback(self):
         dirpath = os.path.join(self.config['trainer']['default_root_dir'], self.config['logger']['project'], self.config['logger']['name'])
-        checkpoint = pl.callbacks.ModelCheckpoint(dirpath=dirpath, filename='{epoch}-{val_student_miou:.2f}',
-                                                  monitor='val_student_miou', mode='max', save_top_k=3)
+        checkpoint = pl.callbacks.ModelCheckpoint(dirpath=dirpath, filename='{epoch}-{val_teacher_miou:.2f}',
+                                                  monitor='val_teacher_miou', mode='max', save_top_k=3)
         return [checkpoint]
 
 
