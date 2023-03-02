@@ -1,5 +1,6 @@
 import argparse
 import os
+import shutil
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -8,14 +9,13 @@ import torch
 import torch.nn as nn
 import yaml
 from dataloader.semantickitti import SemanticKITTI
-from network.cylinder3d import Cylinder3D
+from network.cylinder3d import Cylinder3DProject
 from pytorch_lightning import Trainer
 from pytorch_lightning.loggers import TensorBoardLogger, WandbLogger
 from sklearnex import patch_sklearn
 from torch.optim import Adam
 from torch.utils.data import DataLoader
 from utils.barlow_twins_loss import BarlowTwinsLoss
-import shutil
 
 import wandb
 
@@ -29,7 +29,7 @@ class LightningTrainer(pl.LightningModule):
         super().__init__()
         self.config = config
         self._load_dataset_info()
-        self.network = Cylinder3D(nclasses=self.nclasses, **config['model'])
+        self.network = Cylinder3DProject(nclasses=self.nclasses, **config['model'])
 
         self.loss = BarlowTwinsLoss()
 

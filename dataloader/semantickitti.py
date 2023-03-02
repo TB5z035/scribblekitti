@@ -203,7 +203,7 @@ class PLSCylindrical(Cylindrical, prefix='pls_cylindrical'):
 
     def __init__(self, split, config, nclasses=20):
         super().__init__(split, config)
-        self.load_file_paths('train', self.label_directory)
+        # self.load_file_paths('train', self.label_directory)
         self.nclasses = nclasses
         self.bin_sizes = self.config['bin_size']
 

@@ -86,8 +86,10 @@ class LightningTrainer(pl.LightningModule):
         self.teacher_cm.update(teacher_output.argmax(1)[mask], teacher_label[mask])
 
     def validation_epoch_end(self, outputs):
-        _, student_miou = compute_iou(self.student_cm.compute(), ignore_zero=True)
+        student_iou, student_miou = compute_iou(self.student_cm.compute(), ignore_zero=True)
         self.student_cm.reset()
+        for class_name, class_iou in zip(self.unique_name, student_iou):
+            self.log('val_student_iou_{}'.format(class_name), class_iou * 100)
         self.log('val_student_miou', student_miou, on_epoch=True, prog_bar=True)
 
         teacher_iou, teacher_miou = compute_iou(self.teacher_cm.compute(), ignore_zero=True)

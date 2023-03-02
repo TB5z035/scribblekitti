@@ -2,14 +2,14 @@ import multiprocessing
 
 import numba as nb
 import numpy as np
+import spconv
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch_scatter
+
 from network.modules.cylinder3d import (ReconBlock, ResBlock, ResContextBlock,
                                         UpBlock)
-
-import spconv
 
 
 class FeatureGenerator(nn.Module):
@@ -107,7 +107,7 @@ class AsymmetricUNet(nn.Module):
         up0e.features = torch.cat((up0e.features, up1e.features), 1)
         logits = self.logits(up0e)
         y = logits.dense()
-        return y, up0e.features
+        return y, up0e
 
 
 class Cylinder3D(nn.Module):
@@ -126,3 +126,12 @@ class Cylinder3D(nn.Module):
     def forward(self, feat, coord, batch_size):
         feat, coord = self.fcnn(feat, coord)
         return self.unet(feat, coord, batch_size)
+
+class Cylinder3DProject(Cylinder3D):
+    def __init__(self, spatial_shape=[480, 360, 32], nclasses=20, in_feat=9, hid_feat=32):
+        super().__init__(spatial_shape, nclasses, in_feat, hid_feat)
+        self.projector = spconv.SubMConv3d(4 * hid_feat, 256, indice_key="logit", kernel_size=3, stride=1, padding=1,
+                                        bias=True)
+    def forward(self, feat, coord, batch_size):
+        y, hidden = super().forward(feat, coord, batch_size)
+        return y, self.projector(hidden).features
