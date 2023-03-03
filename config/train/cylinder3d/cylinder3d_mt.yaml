@@ -47,5 +47,5 @@ optimizer:
   lr: 0.001
 
 logger:
-  project: 'scribblekitti'
+  project: 'scribblekitti_tbw'
   name: 'placeholder'
