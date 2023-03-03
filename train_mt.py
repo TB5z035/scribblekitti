@@ -1,6 +1,7 @@
 import argparse
 import os
 import shutil
+from datetime import datetime
 
 import numpy as np
 import pytorch_lightning as pl
@@ -137,7 +138,8 @@ class LightningTrainer(pl.LightningModule):
             self.color_map[i,:] = torch.tensor(dataset_config['color_map'][i][::-1], dtype=torch.float32)
 
     def get_model_callback(self):
-        dirpath = os.path.join(self.config['trainer']['default_root_dir'], self.config['logger']['project'], self.config['logger']['name'])
+        dirpath = os.path.join(self.config['base_dir'], 'ckpt')
+        os.makedirs(dirpath, exist_ok=True)
         checkpoint = pl.callbacks.ModelCheckpoint(dirpath=dirpath, filename='{epoch}-{val_teacher_miou:.2f}',
                                                   monitor='val_teacher_miou', mode='max', save_top_k=3)
         return [checkpoint]
@@ -158,10 +160,11 @@ if __name__=='__main__':
 
     config['logger']['name'] = args.config_path.split('/')[-1][:-5]
 
-    base_dir = os.path.join(config['trainer']['default_root_dir'], config['logger']['project'], config['logger']['name'])
+    base_dir = os.path.join(config['trainer']['default_root_dir'], config['logger']['project'], config['logger']['name'], datetime.now().strftime('%Y%m%d-%H:%M:%S'))
     os.makedirs(base_dir, exist_ok=True)
     shutil.copy2(args.config_path, os.path.join(base_dir, 'config.yaml'))
     shutil.copy2(args.dataset_config_path, os.path.join(base_dir, 'dataset_config.yaml'))
+    config['base_dir'] = base_dir
 
     wandb_logger = WandbLogger(config=config,
                                save_dir=config['trainer']['default_root_dir'],
