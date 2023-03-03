@@ -1,6 +1,7 @@
 import argparse
 import os
 import shutil
+import sys
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -34,10 +35,8 @@ class LightningTrainer(pl.LightningModule):
         self._load_dataset_info()
         self.network = Cylinder3DProject(nclasses=self.nclasses, **config['model'])
 
-        if 'pretrain_loss' not in self.config:
-            self.loss = BarlowTwinsLoss()
-        else:
-            self.loss = PRETRAIN_LOSS[self.config['pretrain_loss']]()
+        loss_type = self.config['pretrain_loss']['type']
+        self.loss = PRETRAIN_LOSS[loss_type](self.network.feature_size, **self.config['pretrain_loss'])
 
         self.save_hyperparameters('config')
 
@@ -74,12 +73,12 @@ class LightningTrainer(pl.LightningModule):
             features = torch.cat(outputs, dim=0).cpu().numpy()
             print('Number of features: ', len(features))
             feature_embedded = TSNE(n_components=2, learning_rate='auto', perplexity=3).fit_transform(features)
-            os.makedirs(os.path.join(self.config['trainer']['default_root_dir'], self.config['logger']['project'], self.config['logger']['name'], 'tsne'), exist_ok=True)
-            dirpath = os.path.join(self.config['trainer']['default_root_dir'], self.config['logger']['project'], self.config['logger']['name'], 'tsne', f'{self.current_epoch}.png')
+            dirpath = os.path.join(self.config['base_dir'], 'tsne')
+            os.makedirs(dirpath, exist_ok=True)
+            dirpath = os.path.join(dirpath, f'{self.current_epoch}.png')
             plt.scatter(feature_embedded[:, 0], feature_embedded[:, 1], s=1)
             plt.savefig(dirpath, dpi=600)
             plt.cla()
-            # self.logger.experiment.log({"tsne": wandb.plot.scatter(wandb.Table(data=feature_embedded, columns=['x', 'y']), 'x', 'y')})
 
     def configure_optimizers(self):
         optimizer = Adam(self.network.parameters(), **self.config['optimizer'])
@@ -105,7 +104,8 @@ class LightningTrainer(pl.LightningModule):
             self.color_map[i, :] = torch.tensor(dataset_config['color_map'][i][::-1], dtype=torch.float32)
 
     def get_model_callback(self):
-        dirpath = os.path.join(self.config['trainer']['default_root_dir'], self.config['logger']['project'], self.config['logger']['name'], 'pl_ckpt')
+        dirpath = os.path.join(self.config['base_dir'], 'ckpt')
+        os.makedirs(dirpath, exist_ok=True)
         checkpoint = pl.callbacks.ModelCheckpoint(dirpath=dirpath, save_last=True, filename='epoch-{epoch:02d}', period=1)
         return [checkpoint]
 
@@ -128,6 +128,9 @@ if __name__ == '__main__':
     os.makedirs(base_dir, exist_ok=True)
     shutil.copy2(args.config_path, os.path.join(base_dir, 'config.yaml'))
     shutil.copy2(args.dataset_config_path, os.path.join(base_dir, 'dataset_config.yaml'))
+    with open(os.path.join(base_dir, 'command'), 'w') as f:
+        print(sys.argv, file=f) 
+    config['base_dir'] = base_dir
 
     wandb_logger = WandbLogger(config=config, save_dir=config['trainer']['default_root_dir'], **config['logger'])
     model = LightningTrainer(config)

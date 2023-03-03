@@ -2,7 +2,8 @@ model:
   in_feat: 66
   hid_feat: 32
 
-pretrain_loss: mec
+pretrain_loss: 
+  type: mec
 
 dataset:
   root_dir: 'data/sequences'
@@ -23,7 +24,7 @@ val_dataset:
   bin_size: [[24,9],[48,18],[96,36]]
 
 train_dataloader:
-  batch_size: 2
+  batch_size: 1
   shuffle: True
   num_workers: 8
 
@@ -46,5 +47,5 @@ optimizer:
   lr: 0.1
 
 logger:
-  project: 'scribblekitti'
+  project: 'scribblekitti_tbw'
   name: placeholder # `name` has no effect

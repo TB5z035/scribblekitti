@@ -3,11 +3,9 @@ import torch.nn as nn
 
 
 class TwinsLoss(nn.Module):
+
     def __init__(self) -> None:
         super().__init__()
-
-    # def __call__(self, feature_a, feature_b):
-    #     return self.forward(feature_a, feature_b)
 
     def _assert_feat(self, feature_a, feature_b):
         batch_size_a, feature_size_a = feature_a.shape
@@ -19,26 +17,25 @@ class TwinsLoss(nn.Module):
     def forward(self, feature_a, feature_b):
         raise NotImplementedError
 
+
 def off_diagonal(x):
     # return a flattened view of the off-diagonal elements of a square matrix
     n, m = x.shape
     assert n == m
     return x.flatten()[:-1].view(n - 1, n + 1)[:, 1:].flatten()
 
+
 class BarlowTwinsLoss(TwinsLoss):
 
-    def __init__(self, coef=0.3):
+    def __init__(self, num_features=128, coef=0.3, **_):
         super().__init__()
         self.coef = coef
-        self.bn = torch.nn.BatchNorm1d(128, affine=False)
+        self.bn = torch.nn.BatchNorm1d(num_features, affine=False)
 
     def forward(self, feature_a, feature_b):
         # feature_a / feature_b -> (batch_size, feature_size)
         batch_size, feature_size = self._assert_feat(feature_a, feature_b)
 
-        # feature_a = (feature_a - feature_a.mean(dim=0)) / (feature_a.std(dim=0))
-        # feature_b = (feature_b - feature_b.mean(dim=0)) / (feature_b.std(dim=0))
-        # cross_correlation = torch.mm(feature_a.t(), feature_b) / batch_size
         cross_correlation = self.bn(feature_a).T @ self.bn(feature_b)
         cross_correlation.div_(batch_size)
         torch.distributed.all_reduce(cross_correlation)
@@ -47,29 +44,23 @@ class BarlowTwinsLoss(TwinsLoss):
         off_diag = off_diagonal(cross_correlation).pow_(2).sum()
         loss = on_diag + self.coef * off_diag
 
-        # remain = (cross_correlation - torch.eye(feature_size, device=cross_correlation.device)).pow(2)
-        # remain[(1 - torch.eye(feature_size, device=remain.device)).to(torch.bool)] *= self.coef
-        # loss = remain.sum()
-
         return loss
 
 
 class MECTwinsLoss(TwinsLoss):
 
-    def __init__(self, lamb=0.1, mu=0.1, n=10) -> None:
+    def __init__(self, num_features=128, lamb=0.1, mu=0.1, n=10, **_) -> None:
         super().__init__()
         self.lamb = lamb
         self.mu = mu
         self.n = n
+        self.bn = torch.nn.BatchNorm1d(num_features, affine=False)
 
     def forward(self, feature_a, feature_b):
         batch_size, feature_size = self._assert_feat(feature_a, feature_b)
-        self.lamb = 1 / 0.06 / batch_size   
+        self.lamb = 1 / 0.06 / batch_size
         self.mu = (batch_size + feature_size) / 2
-
-        feature_a = (feature_a - feature_a.mean(dim=0)) / feature_a.std(dim=0)  
-        feature_b = (feature_b - feature_b.mean(dim=0)) / feature_b.std(dim=0)
-        cross_correlation = torch.mm(feature_a.t(), feature_b) / batch_size
+        cross_correlation = torch.mm(self.bn(feature_a).t(), self.bn(feature_b)) / batch_size
 
         sum_p = torch.zeros_like(cross_correlation)
         power = torch.clone(cross_correlation)
@@ -82,4 +73,3 @@ class MECTwinsLoss(TwinsLoss):
                 sum_p -= power / i
         loss = -self.mu * torch.trace(sum_p)
         return loss
-

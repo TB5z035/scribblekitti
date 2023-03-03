@@ -2,6 +2,10 @@ model:
   in_feat: 66
   hid_feat: 32
 
+pretrain_loss: 
+  type: bt
+  coef: 0.0051
+
 dataset:
   root_dir: 'data/sequences'
   prefix: pls_cylindrical_twin
@@ -44,5 +48,5 @@ optimizer:
   lr: 0.1
 
 logger:
-  project: 'scribblekitti'
+  project: 'scribblekitti_tbw'
   name: placeholder # `name` has no effect

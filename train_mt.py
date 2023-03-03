@@ -1,6 +1,7 @@
 import argparse
 import os
 import shutil
+import sys
 from datetime import datetime
 
 import numpy as np
@@ -164,6 +165,8 @@ if __name__=='__main__':
     os.makedirs(base_dir, exist_ok=True)
     shutil.copy2(args.config_path, os.path.join(base_dir, 'config.yaml'))
     shutil.copy2(args.dataset_config_path, os.path.join(base_dir, 'dataset_config.yaml'))
+    with open(os.path.join(base_dir, 'command'), 'w') as f:
+        print(sys.argv, file=f) 
     config['base_dir'] = base_dir
 
     wandb_logger = WandbLogger(config=config,
