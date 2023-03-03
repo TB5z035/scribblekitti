@@ -65,7 +65,7 @@ class LightningTrainer(pl.LightningModule):
         if self.global_rank == 0:
             rpz, fea, _ = batch
             output = self(self.network, fea, rpz)
-            return output.cpu()[::10]
+            return output.cpu()[::100]
         else:
             return None
 

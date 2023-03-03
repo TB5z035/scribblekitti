@@ -13,7 +13,7 @@ class PartialConsistencyLoss(nn.Module):
         loss_s = self.compute_supervised_loss(student_output, student_label)
         mask = student_label == self.ignore_index
         loss_u = self.compute_consistency_loss(student_output, teacher_output, mask=mask)
-        return (loss_s + loss_u)/student_output.shape[-1]
+        return (loss_s + loss_u)/student_output.shape[0]
 
     def compute_supervised_loss(self, student_output, student_label):
         return self.supervised_loss(student_output, student_label)
