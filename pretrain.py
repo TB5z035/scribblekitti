@@ -2,6 +2,7 @@ import argparse
 import os
 import shutil
 import sys
+from datetime import datetime
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -124,7 +125,7 @@ if __name__ == '__main__':
 
     config['logger']['name'] = args.config_path.split('/')[-1][:-5]
 
-    base_dir = os.path.join(config['trainer']['default_root_dir'], config['logger']['project'], config['logger']['name'])
+    base_dir = os.path.join(config['trainer']['default_root_dir'], config['logger']['project'], config['logger']['name'], datetime.now().strftime('%Y%m%d-%H:%M:%S'))
     os.makedirs(base_dir, exist_ok=True)
     shutil.copy2(args.config_path, os.path.join(base_dir, 'config.yaml'))
     shutil.copy2(args.dataset_config_path, os.path.join(base_dir, 'dataset_config.yaml'))
