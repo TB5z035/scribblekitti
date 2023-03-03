@@ -49,7 +49,7 @@ class BarlowTwinsLoss(TwinsLoss):
 
 class MECTwinsLoss(TwinsLoss):
 
-    def __init__(self, num_features=128, lamb=0.1, mu=0.1, n=10, **_) -> None:
+    def __init__(self, num_features=128, lamb=0.1, mu=0.1, n=4, **_) -> None:
         super().__init__()
         self.lamb = lamb
         self.mu = mu
@@ -60,16 +60,17 @@ class MECTwinsLoss(TwinsLoss):
         batch_size, feature_size = self._assert_feat(feature_a, feature_b)
         self.lamb = 1 / 0.06 / batch_size
         self.mu = (batch_size + feature_size) / 2
-        cross_correlation = torch.mm(self.bn(feature_a).t(), self.bn(feature_b)) / batch_size
+        cross_correlation = self.lamb * torch.mm(self.bn(feature_a).t(), self.bn(feature_b))
 
         sum_p = torch.zeros_like(cross_correlation)
         power = torch.clone(cross_correlation)
-        for i in range(self.n + 1):
+        for i in range(1, self.n + 1):
             if i > 1:
                 power = torch.mm(power, cross_correlation)
-            if (i + 1) % 2 == 0:
+            if i % 2 == 1:
                 sum_p += power / i
             else:
                 sum_p -= power / i
         loss = -self.mu * torch.trace(sum_p)
+        
         return loss
