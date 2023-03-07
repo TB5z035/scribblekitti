@@ -62,9 +62,12 @@ class LightningTrainer(pl.LightningModule):
 
         student_output = self(self.student, student_fea, student_rpz, batch_size)
         teacher_output = self(self.teacher, teacher_fea, teacher_rpz, batch_size)
-        loss = self.loss_cl(student_output, teacher_output, student_label) + \
-               self.loss_ls(student_output.softmax(1), student_label, ignore=0)
+        cl_loss = self.loss_cl(student_output, teacher_output, student_label)
+        ls_loss = self.loss_ls(student_output.softmax(1), student_label, ignore=0)
+        loss = cl_loss + ls_loss
 
+        self.log('cl_loss', loss, on_epoch=True, prog_bar=True)
+        self.log('ls_loss', loss, on_epoch=True, prog_bar=True)
         self.log('train_loss', loss, on_epoch=True, prog_bar=True)
         return loss
 

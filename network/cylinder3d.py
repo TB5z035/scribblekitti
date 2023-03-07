@@ -2,14 +2,14 @@ import multiprocessing
 
 import numba as nb
 import numpy as np
+import spconv
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch_scatter
+
 from network.modules.cylinder3d import (ReconBlock, ResBlock, ResContextBlock,
                                         UpBlock)
-
-import spconv
 
 
 class FeatureGenerator(nn.Module):
@@ -55,13 +55,13 @@ class FeatureGenerator(nn.Module):
         coords = coords[shuffle, :]
 
         # Unique coordinates
-        # unique_coords, unique_inv = torch.unique(coords, return_inverse=True, dim=0)
+        unique_coords, unique_inv = torch.unique(coords, return_inverse=True, dim=0)
 
         # Generate features
         feats = self.net(feats)
-        # feats = torch_scatter.scatter_max(feats, unique_inv, dim=0)[0]
+        feats = torch_scatter.scatter_max(feats, unique_inv, dim=0)[0]
         feats = self.compress(feats)
-        return feats, coords.type(torch.int64)
+        return feats, unique_coords.type(torch.int64)
 
 
 class AsymmetricUNet(nn.Module):
