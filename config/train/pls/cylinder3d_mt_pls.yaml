@@ -33,6 +33,11 @@ val_dataloader:
   shuffle: False
   num_workers: 8
 
+test_dataloader:
+  batch_size: 1
+  shuffle: False
+  num_workers: 4
+
 trainer:
   max_epochs: 75
   gpus: -1
