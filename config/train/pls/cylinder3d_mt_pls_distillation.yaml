@@ -1,0 +1,51 @@
+model:
+  in_feat: 9
+  hid_feat: 32
+
+dataset:
+  root_dir: 'data/sequences'
+  prefix: cylindrical_mt
+  label_directory: 'crb_cylinder3d_mt_pls'
+  spatial_shape: [480,360,32]
+  max_bound: [50,3.1415926,2]
+  min_bound: [0,-3.1415926,-4]
+  aug:
+    student: ['rotate', 'flip', 'scale', 'noise']
+    teacher: ['rotate', 'flip']
+  bin_size: [[24,9],[48,18],[96,36]]
+
+val_dataset:
+  root_dir: 'data/sequences'
+  prefix: cylindrical_mt
+  label_directory: labels
+  spatial_shape: [480,360,32]
+  max_bound: [50,3.1415926,2]
+  min_bound: [0,-3.1415926,-4]
+  bin_size: [[24,9],[48,18],[96,36]]
+
+train_dataloader:
+  batch_size: 2
+  shuffle: True
+  num_workers: 8
+
+val_dataloader:
+  batch_size: 2
+  shuffle: False
+  num_workers: 8
+
+trainer:
+  max_epochs: 75
+  gpus: -1
+  check_val_every_n_epoch: 1
+  default_root_dir: 'output'
+  accelerator: 'ddp'
+  sync_batchnorm: True
+  accumulate_grad_batches: 1
+  num_sanity_val_steps: 1
+
+optimizer:
+  lr: 0.001
+
+logger:
+  project: 'scribblekitti_tbw'
+  name: 'placeholder'
