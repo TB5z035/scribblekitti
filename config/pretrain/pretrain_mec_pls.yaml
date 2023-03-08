@@ -2,21 +2,31 @@ model:
   in_feat: 66
   hid_feat: 32
 
+pretrain_loss: 
+  type: mec
+
 dataset:
   root_dir: 'data/sequences'
-  prefix: pls_cylindrical_mt
+  prefix: pls_cylindrical_twin
   spatial_shape: [480,360,32]
   max_bound: [50,3.1415926,2]
   min_bound: [0,-3.1415926,-4]
-  aug:
-    student: ['rotate', 'flip', 'scale', 'noise']
-    teacher: ['rotate', 'flip']
+  aug: ['rotate', 'flip', 'noise']
+  bin_size: [[24,9],[48,18],[96,36]]
+
+val_dataset:
+  root_dir: 'data/sequences'
+  prefix: pls_cylindrical_sample
+  spatial_shape: [480,360,32]
+  max_bound: [50,3.1415926,2]
+  min_bound: [0,-3.1415926,-4]
+  aug: []
   bin_size: [[24,9],[48,18],[96,36]]
 
 train_dataloader:
   batch_size: 1
   shuffle: True
-  num_workers: 4
+  num_workers: 8
 
 val_dataloader:
   batch_size: 1
@@ -31,11 +41,11 @@ trainer:
   accelerator: 'ddp'
   sync_batchnorm: True
   accumulate_grad_batches: 2
-  num_sanity_val_steps: 1
+  num_sanity_val_steps: 10
 
 optimizer:
-  lr: 0.001
+  lr: 0.1
 
 logger:
-  project: 'scribblekitti'
-  name: 'training_with_pretrain'
+  project: 'scribblekitti_tbw'
+  name: placeholder # `name` has no effect

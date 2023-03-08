@@ -7,16 +7,17 @@ Lovasz-Softmax and Jaccard hinge loss in PyTorch
 Maxim Berman 2018 ESAT-PSI KU Leuven (MIT License)
 """
 
-from __future__ import print_function, division
+from __future__ import division, print_function
 
-import torch
-from torch.autograd import Variable
-import torch.nn.functional as F
 import numpy as np
+import torch
+import torch.nn.functional as F
+from torch.autograd import Variable
+
 try:
-    from itertools import  ifilterfalse
+    from itertools import ifilterfalse
 except ImportError: # py3k
-    from itertools import  filterfalse as ifilterfalse
+    from itertools import filterfalse as ifilterfalse
 
 def lovasz_grad(gt_sorted):
     """
@@ -214,8 +215,11 @@ def flatten_probas(probas, labels, ignore=None):
         #3D segmentation
         B, C, L, H, W = probas.size()
         probas = probas.contiguous().view(B, C, L, H*W)
-    B, C, H, W = probas.size()
-    probas = probas.permute(0, 2, 3, 1).contiguous().view(-1, C)  # B * H * W, C = P, C
+    elif probas.dim() == 4:
+        B, C, H, W = probas.size()
+        probas = probas.permute(0, 2, 3, 1).contiguous().view(-1, C)  # B * H * W, C = P, C
+    else:
+        pass
     labels = labels.view(-1)
     if ignore is None:
         return probas, labels

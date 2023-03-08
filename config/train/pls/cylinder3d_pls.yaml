@@ -4,31 +4,39 @@ model:
 
 dataset:
   root_dir: 'data/sequences'
-  prefix: pls_cylindrical_twin
+  prefix: pls_cylindrical
+  label_directory: scribbles
   spatial_shape: [480,360,32]
   max_bound: [50,3.1415926,2]
   min_bound: [0,-3.1415926,-4]
-  aug: ['rotate', 'flip', 'noise']
+  aug:
+    student: ['rotate', 'flip', 'scale', 'noise']
+    teacher: ['rotate', 'flip']
   bin_size: [[24,9],[48,18],[96,36]]
 
 val_dataset:
   root_dir: 'data/sequences'
-  prefix: pls_cylindrical_sample
+  prefix: pls_cylindrical
+  label_directory: labels
   spatial_shape: [480,360,32]
   max_bound: [50,3.1415926,2]
   min_bound: [0,-3.1415926,-4]
-  aug: []
   bin_size: [[24,9],[48,18],[96,36]]
 
 train_dataloader:
-  batch_size: 1
+  batch_size: 2
   shuffle: True
-  num_workers: 16
+  num_workers: 8
 
 val_dataloader:
+  batch_size: 2
+  shuffle: False
+  num_workers: 8
+
+test_dataloader:
   batch_size: 1
   shuffle: False
-  num_workers: 16
+  num_workers: 4
 
 trainer:
   max_epochs: 75
@@ -37,12 +45,12 @@ trainer:
   default_root_dir: 'output'
   accelerator: 'ddp'
   sync_batchnorm: True
-  accumulate_grad_batches: 2
-  num_sanity_val_steps: 10
+  accumulate_grad_batches: 1
+  num_sanity_val_steps: 1
 
 optimizer:
-  lr: 0.01
+  lr: 0.001
 
 logger:
-  project: 'scribblekitti'
-  name: 'pretraining'
+  project: 'scribblekitti_tbw'
+  name: 'placeholder'

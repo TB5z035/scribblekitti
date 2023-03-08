@@ -59,6 +59,11 @@ class Baseline(SemanticKITTI, prefix='baseline'):
             xyzr[:, :3] = self.augment(xyzr[:, :3], self.config['aug'])
         return torch.from_numpy(xyzr), \
                torch.from_numpy(label).squeeze().long()
+    
+    @staticmethod
+    def _collate_fn(batch):
+        xyzrs, labels = zip(*batch)
+        return xyzrs, labels
 
     def __len__(self):
         return len(self.lidar_paths)
@@ -135,7 +140,12 @@ class Cylindrical(Baseline, prefix='cylindrical'):
     def __getitem__(self, idx):
         xyzr = self.get_lidar(idx)
         label = self.get_label(idx)
-        return self.get_cylindrical_scene(xyzr, label, self.config['aug'])
+        return self.get_cylindrical_scene(xyzr, label, self.config.get('aug', None))
+
+    @staticmethod
+    def _collate_fn(batch):
+        xyzrs, feas, labels = zip(*batch)
+        return xyzrs, feas, labels
 
     @staticmethod
     def cart2cyl(xyz):
@@ -159,22 +169,41 @@ class Cylindrical(Baseline, prefix='cylindrical'):
                torch.from_numpy(fea).float(), \
                torch.from_numpy(label).squeeze().long()
 
+class CylindricalSample(Cylindrical, prefix='cylindrical_sample'):
+    def __init__(self, split, config, *args, **kwargs):
+        super().__init__(split, config, *args, **kwargs)
+        self.lidar_paths = self.lidar_paths[::100]
+        self.label_paths = self.label_paths[::100]
 
 class CylindricalMT(Cylindrical, prefix='cylindrical_mt'):
 
     def __getitem__(self, idx):
         xyzr = self.get_lidar(idx)
         label = self.get_label(idx)
+        if 'aug' in self.config:
+            student_aug = self.config['aug']['student']
+            teacher_aug = self.config['aug']['teacher']
+        else:
+            student_aug = teacher_aug = None
         return {
-            'student': self.get_cylindrical_scene(xyzr, label, self.config['aug']['student']),
-            'teacher': self.get_cylindrical_scene(xyzr, label, self.config['aug']['teacher'])
+            'student': self.get_cylindrical_scene(xyzr, label, student_aug),
+            'teacher': self.get_cylindrical_scene(xyzr, label, teacher_aug)
+        }
+    @staticmethod
+    def _collate_fn(batch):
+        batch_size = len(batch)
+        stu_xyzrs, stu_feas, stu_labels = zip(*[i['student'] for i in batch])
+        tea_xyzrs, tea_feas, tea_labels = zip(*[i['teacher'] for i in batch])
+        return {
+            'student': (stu_xyzrs, stu_feas, stu_labels),
+            'teacher': (tea_xyzrs, tea_feas, tea_labels),
         }
 
 class PLSCylindrical(Cylindrical, prefix='pls_cylindrical'):
 
     def __init__(self, split, config, nclasses=20):
         super().__init__(split, config)
-        self.load_file_paths('train', self.label_directory)
+        # self.load_file_paths('train', self.label_directory)
         self.nclasses = nclasses
         self.bin_sizes = self.config['bin_size']
 
@@ -228,9 +257,19 @@ class CylindricalTwin(Cylindrical, prefix='cylindrical_twin'):
         xyzr = self.get_lidar(idx)
         label = self.get_label(idx)
         return [
-            self.get_cylindrical_scene(xyzr, label, self.config['aug']),
-            self.get_cylindrical_scene(xyzr, label, self.config['aug']),
+            self.get_cylindrical_scene(xyzr, label, self.config.get('aug', None)),
+            self.get_cylindrical_scene(xyzr, label, self.config.get('aug', None)),
         ]
+    @staticmethod
+    def _collate_fn(batch):
+        list_branch_1, list_branch_2 = zip(*batch)
+        stu_xyzrs, stu_feas, stu_labels = zip(*list_branch_1)
+        tea_xyzrs, tea_feas, tea_labels = zip(*list_branch_2)
+        return [
+            (tea_xyzrs, tea_feas, tea_labels),
+            (stu_xyzrs, stu_feas, stu_labels)
+        ]
+
 
 class PLSCylindricalTwin(CylindricalTwin, PLSCylindrical, prefix='pls_cylindrical_twin'):
     pass
@@ -241,3 +280,25 @@ class PLSCylindricalTwinSample(PLSCylindricalTwin, prefix='pls_cylindrical_twin_
         self.lidar_paths = self.lidar_paths[::1000]
         self.label_paths = self.label_paths[::1000]
     pass
+
+
+
+if __name__ == '__main__':
+    import yaml
+    config_path = 'config/train/cylinder3d/cylinder3d_mt.yaml'
+    dataset_config_path = 'config/dataset/semantickitti.yaml'
+
+    with open(config_path, 'r') as f:
+        config = yaml.safe_load(f)
+    with open(dataset_config_path, 'r') as f:
+        config['dataset'].update(yaml.safe_load(f))
+    with open(dataset_config_path, 'r') as f:
+        config['val_dataset'].update(yaml.safe_load(f))
+    from torch.utils.data import DataLoader
+    dataset = SemanticKITTI(split='train', config=config['dataset'])
+    val_dataset = SemanticKITTI(split='valid', config=config['val_dataset'])
+    loader = DataLoader(dataset=dataset, collate_fn=dataset._collate_fn, **config['train_dataloader'])
+    val_loader = DataLoader(dataset=dataset, collate_fn=dataset._collate_fn, **config['val_dataloader'])
+
+    from IPython import embed
+    embed()
