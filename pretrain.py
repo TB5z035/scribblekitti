@@ -9,15 +9,16 @@ import numpy as np
 import pytorch_lightning as pl
 import torch
 import torch.nn as nn
-import wandb
 import yaml
-from dataloader.semantickitti import SemanticKITTI
-from network.cylinder3d import Cylinder3DProject
 from pytorch_lightning import Trainer
 from pytorch_lightning.loggers import TensorBoardLogger, WandbLogger
 from sklearnex import patch_sklearn
 from torch.optim import Adam
 from torch.utils.data import DataLoader
+
+import wandb
+from dataloader.semantickitti import SemanticKITTI
+from network.cylinder3d import Cylinder3DProject
 from utils.barlow_twins_loss import BarlowTwinsLoss, MECTwinsLoss
 
 patch_sklearn()
@@ -58,8 +59,9 @@ class LightningTrainer(pl.LightningModule):
         return loss
 
     def training_epoch_end(self, outputs) -> None:
-        os.makedirs(os.path.join(self.config['trainer']['default_root_dir'], self.config['logger']['project'], self.config['logger']['name'], 'model'), exist_ok=True)
-        torch.save(self.network.state_dict(), os.path.join(self.config['trainer']['default_root_dir'], self.config['logger']['project'], self.config['logger']['name'], 'model', f'{self.current_epoch}.ckpt'))
+        dirpath = os.path.join(self.config['base_dir'], 'model')
+        os.makedirs(dirpath, exist_ok=True)
+        torch.save(self.network.state_dict(), os.path.join(dirpath, f'{self.current_epoch}.ckpt'))
 
     def validation_step(self, batch, batch_idx):
         if self.global_rank == 0:
