@@ -25,6 +25,7 @@ if __name__=='__main__':
     parser.add_argument('--config_path', default='config/crb.yaml')
     parser.add_argument('--dataset_config_path', default='config/semantickitti.yaml')
     parser.add_argument('--save_dir', default='output')
+    parser.add_argument('--pseudo_name', default='crb')
     args = parser.parse_args()
 
     config = yaml.safe_load(open(args.config_path, 'r'))
@@ -50,8 +51,8 @@ if __name__=='__main__':
     print('Determining global threshold k^(c,r)...')
     for i in tqdm(range(len(ds))):
         label_path = ds.label_paths[i]
-        pred = hf[os.path.join(label_path, 'pred')][()][0]
-        conf = hf[os.path.join(label_path, 'conf')][()][0]
+        pred = hf[os.path.join(label_path, 'pred')][()]
+        conf = hf[os.path.join(label_path, 'conf')][()]
         lidar = ds.get_lidar(i)
         dist = load_dist(lidar, config['min_bound'], config['max_bound'], k_count)
 
@@ -86,8 +87,8 @@ if __name__=='__main__':
     learning_map_inv = np.asarray(list(config['dataset']['learning_map_inv'].values()))
     for i in tqdm(range(len(ds))):
         label_path = ds.label_paths[i]
-        pred = hf[os.path.join(label_path, 'pred')][()][0]
-        conf = hf[os.path.join(label_path, 'conf')][()][0]
+        pred = hf[os.path.join(label_path, 'pred')][()]
+        conf = hf[os.path.join(label_path, 'conf')][()]
         lidar = ds.get_lidar(i)
         dist = load_dist(lidar, config['min_bound'], config['max_bound'], k_count)
         scribbles = ds.get_label(i)
