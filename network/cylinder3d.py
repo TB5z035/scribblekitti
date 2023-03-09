@@ -15,8 +15,9 @@ from network.modules.cylinder3d import (ReconBlock, ResBlock, ResContextBlock,
 class FeatureGenerator(nn.Module):
     def __init__(self,
                  in_feat=9,
-                 out_feat=16):
+                 out_feat=16, downsample=True):
         super().__init__()
+        self.downsample = downsample
 
         self.net = nn.Sequential(
             nn.BatchNorm1d(in_feat),
@@ -41,7 +42,7 @@ class FeatureGenerator(nn.Module):
             nn.ReLU(out_feat)
         )
 
-    def forward(self, feat, coord):
+    def forward(self, feat, coord, coord_indices=None):
         # Concatenate data
         coords = []
         for b in range(len(coord)):
@@ -49,19 +50,40 @@ class FeatureGenerator(nn.Module):
         feats = torch.cat(feat, dim=0)
         coords = torch.cat(coords, dim=0)
 
+        # Unique coordinates
+        if coord_indices is None:
+            if self.downsample:
+                unique_coords, unique_inv = torch.unique(coords, return_inverse=True, dim=0)
+        else:
+            unique_coords = coords[coord_indices]
+            unique_inv = coord_indices
+
         # Shuffle data
         shuffle = torch.randperm(coords.shape[0], device=feat[0].device)
         feats = feats[shuffle, :]
         coords = coords[shuffle, :]
-
-        # Unique coordinates
-        unique_coords, unique_inv = torch.unique(coords, return_inverse=True, dim=0)
+        if self.downsample:
+            unique_inv = unique_inv[shuffle]
 
         # Generate features
-        feats = self.net(feats)
-        feats = torch_scatter.scatter_max(feats, unique_inv, dim=0)[0]
-        feats = self.compress(feats)
-        return feats, unique_coords.type(torch.int64)
+        if coord_indices is None:
+            if self.downsample:
+                feats = self.net(feats)
+                feats = torch_scatter.scatter_max(feats, unique_inv, dim=0)[0]
+                feats = self.compress(feats)
+                return feats, unique_coords.type(torch.int64)
+            else:
+                feats = self.net(feats)
+                # feats = torch_scatter.scatter_max(feats, unique_inv, dim=0)[0]
+                feats = self.compress(feats)
+                from IPython import embed
+                embed()
+                return feats, coords.type(torch.int64)
+        else:
+            feats = self.net(feats)
+            feats = torch_scatter.scatter_max(feats, unique_inv, dim=0)[0]
+            feats = self.compress(feats)
+            return feats, unique_coords.type(torch.int64)
 
 
 class AsymmetricUNet(nn.Module):
@@ -115,24 +137,24 @@ class Cylinder3D(nn.Module):
                  spatial_shape=[480,360,32],
                  nclasses=20,
                  in_feat=9,
-                 hid_feat=32):
+                 hid_feat=32, downsample=True):
         super().__init__()
-        self.fcnn = FeatureGenerator(in_feat=in_feat, out_feat=hid_feat//2)
+        self.fcnn = FeatureGenerator(in_feat=in_feat, out_feat=hid_feat//2, downsample=downsample)
         self.unet = AsymmetricUNet(spatial_shape=spatial_shape,
                                    nclasses=nclasses,
                                    in_feat=hid_feat//2,
                                    hid_feat=hid_feat)
 
-    def forward(self, feat, coord, batch_size):
-        feat, coord = self.fcnn(feat, coord)
+    def forward(self, feat, coord, batch_size, unique_invs=None):
+        feat, coord = self.fcnn(feat, coord, unique_invs)
         return self.unet(feat, coord, batch_size)
 
 class Cylinder3DProject(Cylinder3D):
-    def __init__(self, spatial_shape=[480, 360, 32], nclasses=20, in_feat=9, hid_feat=32):
-        super().__init__(spatial_shape, nclasses, in_feat, hid_feat)
+    def __init__(self, spatial_shape=[480, 360, 32], nclasses=20, in_feat=9, hid_feat=32, downsample=True):
+        super().__init__(spatial_shape, nclasses, in_feat, hid_feat, downsample)
         self.feature_size = 4 * hid_feat
         self.projector = spconv.SubMConv3d(4 * hid_feat, 4 * hid_feat, indice_key="logit", kernel_size=3, stride=1, padding=1,
                                         bias=True)
-    def forward(self, feat, coord, batch_size):
-        y, hidden = super().forward(feat, coord, batch_size)
+    def forward(self, feat, coord, batch_size, unique_invs=None):
+        y, hidden = super().forward(feat, coord, batch_size, unique_invs)
         return y, self.projector(hidden).features
