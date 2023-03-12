@@ -2,14 +2,14 @@ import multiprocessing
 
 import numba as nb
 import numpy as np
-import spconv
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch_scatter
-
 from network.modules.cylinder3d import (ReconBlock, ResBlock, ResContextBlock,
                                         UpBlock)
+
+import spconv
 
 
 class FeatureGenerator(nn.Module):
@@ -42,7 +42,7 @@ class FeatureGenerator(nn.Module):
             nn.ReLU(out_feat)
         )
 
-    def forward(self, feat, coord, coord_indices=None):
+    def forward(self, feat, coord, reverse_indices=None):
         # Concatenate data
         coords = []
         for b in range(len(coord)):
@@ -50,41 +50,24 @@ class FeatureGenerator(nn.Module):
         feats = torch.cat(feat, dim=0)
         coords = torch.cat(coords, dim=0)
 
-        # Unique coordinates
-        if coord_indices is None:
-            if self.downsample:
-                unique_coords, unique_inv = torch.unique(coords, return_inverse=True, dim=0)
-        else:
-            unique_coords = coords[coord_indices]
-            unique_inv = coord_indices
-
         # Shuffle data
-        shuffle = torch.randperm(coords.shape[0], device=feat[0].device)
+        shuffle = torch.randperm(feats.shape[0], device=feat[0].device)
         feats = feats[shuffle, :]
-        coords = coords[shuffle, :]
-        if self.downsample:
-            unique_inv = unique_inv[shuffle]
+        if reverse_indices is not None:
+            reverse_indices = reverse_indices[shuffle]
+            unique_inv = reverse_indices
+            coords = coords[shuffle, :]
+            unique_coords = torch_scatter.scatter_max(coords, reverse_indices, dim=0)[0]
+        else:
+        # Unique coordinates
+            coords = coords[shuffle, :]
+            unique_coords, unique_inv = torch.unique(coords, return_inverse=True, dim=0)
 
         # Generate features
-        if coord_indices is None:
-            if self.downsample:
-                feats = self.net(feats)
-                feats = torch_scatter.scatter_max(feats, unique_inv, dim=0)[0]
-                feats = self.compress(feats)
-                return feats, unique_coords.type(torch.int64)
-            else:
-                feats = self.net(feats)
-                # feats = torch_scatter.scatter_max(feats, unique_inv, dim=0)[0]
-                feats = self.compress(feats)
-                from IPython import embed
-                embed()
-                return feats, coords.type(torch.int64)
-        else:
-            feats = self.net(feats)
-            feats = torch_scatter.scatter_max(feats, unique_inv, dim=0)[0]
-            feats = self.compress(feats)
-            return feats, unique_coords.type(torch.int64)
-
+        feats = self.net(feats)
+        feats = torch_scatter.scatter_max(feats, unique_inv, dim=0)[0]
+        feats = self.compress(feats)
+        return feats, unique_coords.type(torch.int64)
 
 class AsymmetricUNet(nn.Module):
     def __init__(self,

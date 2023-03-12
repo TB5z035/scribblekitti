@@ -274,7 +274,7 @@ class CylindricalTwin(Cylindrical, prefix='cylindrical_twin'):
 class PLSCylindricalTwin(CylindricalTwin, PLSCylindrical, prefix='pls_cylindrical_twin'):
     pass
 
-class CylindricalTwinWithQuantize(CylindricalTwin, prefix='pls_cylindrical_twin_with_quantize'):
+class CylindricalTwinWithQuantize(CylindricalTwin, prefix='cylindrical_twin_with_quantize'):
     @staticmethod
     def _collate_fn(batch):
         list_branch_1, list_branch_2 = zip(*batch)
