@@ -42,7 +42,7 @@ class FeatureGenerator(nn.Module):
             nn.ReLU(out_feat)
         )
 
-    def forward(self, feat, coord, reverse_indices=None):
+    def forward(self, feat, coord, reverse_indices=None, shuffle=None):
         # Concatenate data
         coords = []
         for b in range(len(coord)):
@@ -51,7 +51,8 @@ class FeatureGenerator(nn.Module):
         coords = torch.cat(coords, dim=0)
 
         # Shuffle data
-        shuffle = torch.randperm(feats.shape[0], device=feat[0].device)
+        if shuffle is None:
+            shuffle = torch.randperm(feats.shape[0], device=feat[0].device)
         feats = feats[shuffle, :]
         if reverse_indices is not None:
             reverse_indices = reverse_indices[shuffle]
@@ -128,8 +129,8 @@ class Cylinder3D(nn.Module):
                                    in_feat=hid_feat//2,
                                    hid_feat=hid_feat)
 
-    def forward(self, feat, coord, batch_size, unique_invs=None):
-        feat, coord = self.fcnn(feat, coord, unique_invs)
+    def forward(self, feat, coord, batch_size, unique_invs=None, shuffle=None):
+        feat, coord = self.fcnn(feat, coord, unique_invs, shuffle)
         return self.unet(feat, coord, batch_size)
 
 class Cylinder3DProject(Cylinder3D):
@@ -138,6 +139,6 @@ class Cylinder3DProject(Cylinder3D):
         self.feature_size = 4 * hid_feat
         self.projector = spconv.SubMConv3d(4 * hid_feat, 4 * hid_feat, indice_key="logit", kernel_size=3, stride=1, padding=1,
                                         bias=True)
-    def forward(self, feat, coord, batch_size, unique_invs=None):
-        y, hidden = super().forward(feat, coord, batch_size, unique_invs)
+    def forward(self, feat, coord, batch_size, unique_invs=None, shuffle=None):
+        y, hidden = super().forward(feat, coord, batch_size, unique_invs, shuffle)
         return y, self.projector(hidden).features

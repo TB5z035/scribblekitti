@@ -1,6 +1,7 @@
 import argparse
 import os
 import shutil
+import sys
 from datetime import datetime
 
 import numpy as np
@@ -8,14 +9,14 @@ import pytorch_lightning as pl
 import torch
 import torch.nn as nn
 import yaml
+from dataloader.semantickitti import SemanticKITTI
+from network.cylinder3d import Cylinder3D
 from pytorch_lightning import Trainer
-from pytorch_lightning.loggers import WandbLogger
+from pytorch_lightning.loggers import TensorBoardLogger, WandbLogger
+from pytorch_lightning.utilities import rank_zero_only
 from torch.optim import Adam
 from torch.utils.data import DataLoader
 from torchmetrics import ConfusionMatrix
-
-from dataloader.semantickitti import SemanticKITTI
-from network.cylinder3d import Cylinder3D
 from utils.consistency_loss import PartialConsistencyLoss
 from utils.evaluation import compute_iou
 from utils.lovasz import lovasz_softmax
@@ -84,7 +85,7 @@ class LightningTrainer(pl.LightningModule):
             self.best_miou = student_miou
             self.best_iou = np.nan_to_num(student_iou) * 100
         self.log('val_best_miou', self.best_miou, on_epoch=True, prog_bar=True)
-        self.log('val_best_iou', self.best_iou, on_epoch=True, prog_bar=False)
+        # self.log('val_best_iou', self.best_iou, on_epoch=True, prog_bar=False)
 
     def configure_optimizers(self):
         optimizer = Adam(self.student.parameters(), **self.config['optimizer'])
@@ -111,10 +112,19 @@ class LightningTrainer(pl.LightningModule):
 
     def get_model_callback(self):
         dirpath = os.path.join(self.config['base_dir'], 'ckpt')
-        os.makedirs(dirpath, exist_ok=True)
+        rank_zero_only(os.makedirs)(dirpath, exist_ok=True)
         checkpoint = pl.callbacks.ModelCheckpoint(dirpath=dirpath, filename='{epoch}-{val_student_miou:.2f}',
                                                   monitor='val_student_miou', mode='max', save_top_k=3)
         return [checkpoint]
+
+
+@rank_zero_only
+def init(base_dir):
+    os.makedirs(base_dir, exist_ok=True)
+    shutil.copy2(args.config_path, os.path.join(base_dir, 'config.yaml'))
+    shutil.copy2(args.dataset_config_path, os.path.join(base_dir, 'dataset_config.yaml'))
+    with open(os.path.join(base_dir, 'command'), 'w') as f:
+        print(sys.argv, file=f) 
 
 
 if __name__=='__main__':
@@ -133,15 +143,14 @@ if __name__=='__main__':
     config['logger']['name'] = args.config_path.split('/')[-1][:-5]
 
     base_dir = os.path.join(config['trainer']['default_root_dir'], config['logger']['project'], config['logger']['name'], datetime.now().strftime('%Y%m%d-%H:%M:%S'))
-    os.makedirs(base_dir, exist_ok=True)
-    shutil.copy2(args.config_path, os.path.join(base_dir, 'config.yaml'))
-    shutil.copy2(args.dataset_config_path, os.path.join(base_dir, 'dataset_config.yaml'))
+    init(base_dir)
     config['base_dir'] = base_dir
 
     wandb_logger = WandbLogger(config=config,
                                save_dir=config['trainer']['default_root_dir'],
                                **config['logger'])
+    tb_logger = TensorBoardLogger(base_dir, name='tb')
     model = LightningTrainer(config)
-    Trainer(logger=wandb_logger,
+    Trainer(logger=[wandb_logger, tb_logger],
             callbacks=model.get_model_callback(),
             **config['trainer']).fit(model)
