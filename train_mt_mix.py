@@ -10,12 +10,14 @@ from pytorch_lightning import Trainer
 from pytorch_lightning.loggers import TensorBoardLogger, WandbLogger
 from pytorch_lightning.utilities import rank_zero_only
 from train_mt import LightningTrainer
+from utils.timer import Timer
 
+TIMER_SILENT = True
 
 def mix_mask(rpz_1, rpz_2, bound=(0, 50), bincount=10):
     step = (bound[1] - bound[0]) // bincount
-    odd_mask_1 = (rpz_1[:, 0] // step) % 2 == 1
-    odd_mask_2 = (rpz_2[:, 0] // step) % 2 == 1
+    odd_mask_1 = torch.div(rpz_1[:, 0], step, rounding_mode='floor') % 2 == 1
+    odd_mask_2 = torch.div(rpz_2[:, 0], step, rounding_mode='floor') % 2 == 1
     return odd_mask_1, odd_mask_2
 
 
@@ -27,32 +29,39 @@ def lasermix(data_1, data_2):
     batch_size = len(fea_batch_1) // 2
     mixed_data = []
     for bi in range(batch_size):
-        fea_a, rpz_a, label_a = fea_batch_1[bi * 2], rpz_batch_1[bi * 2], label_batch_1[bi * 2]
-        fea_b, rpz_b, label_b = fea_batch_2[bi * 2 + 1], rpz_batch_2[bi * 2 + 1], label_batch_2[bi * 2 + 1]
-        odd_mask_a, odd_mask_b = mix_mask(rpz_a, rpz_b)
-        mixed_data.append((
-            torch.cat([fea_a[odd_mask_a], fea_b[torch.logical_not(odd_mask_b)]], dim=0),
-            torch.cat([rpz_a[odd_mask_a], rpz_b[torch.logical_not(odd_mask_b)]], dim=0),
-            torch.cat([label_a[odd_mask_a], label_b[torch.logical_not(odd_mask_b)]], dim=0),
-        ))
-        mixed_data.append((
-            torch.cat([fea_a[torch.logical_not(odd_mask_a)], fea_b[odd_mask_b]], dim=0),
-            torch.cat([rpz_a[torch.logical_not(odd_mask_a)], rpz_b[odd_mask_b]], dim=0),
-            torch.cat([label_a[torch.logical_not(odd_mask_a)], label_b[odd_mask_b]], dim=0),
-        ))
-        fea_a, rpz_a, label_a = fea_batch_1[bi * 2 + 1], rpz_batch_1[bi * 2 + 1], label_batch_1[bi * 2 + 1]
-        fea_b, rpz_b, label_b = fea_batch_2[bi * 2], rpz_batch_2[bi * 2], label_batch_2[bi * 2]
-        odd_mask_a, odd_mask_b = mix_mask(rpz_a, rpz_b)
-        mixed_data.append((
-            torch.cat([fea_a[odd_mask_a], fea_b[torch.logical_not(odd_mask_b)]], dim=0),
-            torch.cat([rpz_a[odd_mask_a], rpz_b[torch.logical_not(odd_mask_b)]], dim=0),
-            torch.cat([label_a[odd_mask_a], label_b[torch.logical_not(odd_mask_b)]], dim=0),
-        ))
-        mixed_data.append((
-            torch.cat([fea_a[torch.logical_not(odd_mask_a)], fea_b[odd_mask_b]], dim=0),
-            torch.cat([rpz_a[torch.logical_not(odd_mask_a)], rpz_b[odd_mask_b]], dim=0),
-            torch.cat([label_a[torch.logical_not(odd_mask_a)], label_b[odd_mask_b]], dim=0),
-        ))
+        with Timer(f'lasermix {bi}', slient=TIMER_SILENT) as timer:
+            fea_a, rpz_a, label_a = fea_batch_1[bi * 2], rpz_batch_1[bi * 2], label_batch_1[bi * 2]
+            fea_b, rpz_b, label_b = fea_batch_2[bi * 2 + 1], rpz_batch_2[bi * 2 + 1], label_batch_2[bi * 2 + 1]
+            timer.tick('split1')
+            odd_mask_a, odd_mask_b = mix_mask(rpz_a, rpz_b)
+            timer.tick('mix_mask1')
+            mixed_data.append((
+                torch.cat([fea_a[odd_mask_a], fea_b[torch.logical_not(odd_mask_b)]], dim=0),
+                torch.cat([rpz_a[odd_mask_a], rpz_b[torch.logical_not(odd_mask_b)]], dim=0),
+                torch.cat([label_a[odd_mask_a], label_b[torch.logical_not(odd_mask_b)]], dim=0),
+            ))
+            mixed_data.append((
+                torch.cat([fea_a[torch.logical_not(odd_mask_a)], fea_b[odd_mask_b]], dim=0),
+                torch.cat([rpz_a[torch.logical_not(odd_mask_a)], rpz_b[odd_mask_b]], dim=0),
+                torch.cat([label_a[torch.logical_not(odd_mask_a)], label_b[odd_mask_b]], dim=0),
+            ))
+            timer.tick('append1')
+            fea_a, rpz_a, label_a = fea_batch_1[bi * 2 + 1], rpz_batch_1[bi * 2 + 1], label_batch_1[bi * 2 + 1]
+            fea_b, rpz_b, label_b = fea_batch_2[bi * 2], rpz_batch_2[bi * 2], label_batch_2[bi * 2]
+            timer.tick('split2')
+            odd_mask_a, odd_mask_b = mix_mask(rpz_a, rpz_b)
+            timer.tick('mix_mask1')
+            mixed_data.append((
+                torch.cat([fea_a[odd_mask_a], fea_b[torch.logical_not(odd_mask_b)]], dim=0),
+                torch.cat([rpz_a[odd_mask_a], rpz_b[torch.logical_not(odd_mask_b)]], dim=0),
+                torch.cat([label_a[odd_mask_a], label_b[torch.logical_not(odd_mask_b)]], dim=0),
+            ))
+            mixed_data.append((
+                torch.cat([fea_a[torch.logical_not(odd_mask_a)], fea_b[odd_mask_b]], dim=0),
+                torch.cat([rpz_a[torch.logical_not(odd_mask_a)], rpz_b[odd_mask_b]], dim=0),
+                torch.cat([label_a[torch.logical_not(odd_mask_a)], label_b[odd_mask_b]], dim=0),
+            ))
+            timer.tick('append2')
 
     return tuple(zip(*mixed_data))
 
@@ -66,46 +75,67 @@ class LightningMixTrainer(LightningTrainer):
         return torch.cat(outputs, dim=1).T  # (\sigma Bi*Ni, C)
 
     def training_step(self, batch, batch_idx):
-        self.update_teacher()
-        student_rpz, student_fea, student_label_ori = batch['student']
-        teacher_rpz, teacher_fea, _ = batch['teacher']
-        batch_size = len(student_rpz)
-        student_label = torch.cat(student_label_ori, dim=0)
+        with Timer('training_step', slient=TIMER_SILENT) as timer:
+            self.update_teacher()
+            timer.tick('update_teacher')
 
-        unique_invs = [torch.unique(coord, return_inverse=True, dim=0)[1] for coord in student_rpz]
-        count = 0
-        for i in range(len(unique_invs)):
-            unique_invs[i] += count
-            count += len(unique_invs[i])
-        unique_concat_invs = torch.cat(unique_invs)
+            student_rpz, student_fea, student_label_ori = batch['student']
+            teacher_rpz, teacher_fea, _ = batch['teacher']
+            batch_size = len(student_rpz)
+            student_label = torch.cat(student_label_ori, dim=0)
+            timer.tick('split_batch')
 
-        shuffle = torch.randperm(unique_concat_invs.shape[0], device=unique_concat_invs[0].device)
-        inv_shuffle = torch.tensor(list(zip(*sorted([(v, i) for i, v in enumerate(shuffle)], key=lambda x: x[0])))[1], dtype=torch.long)
-        student_output = self(self.student, student_fea, student_rpz, batch_size, unique_invs=unique_concat_invs, shuffle=shuffle)
-        teacher_output = self(self.teacher, teacher_fea, teacher_rpz, batch_size)
-        cl_loss = self.loss_cl(student_output, teacher_output, student_label)
-        ls_loss = self.loss_ls(student_output.softmax(1), student_label, ignore=0)
+            unique_invs = [torch.unique(coord, return_inverse=True, dim=0)[1] for coord in student_rpz]
+            count = 0
+            for i in range(len(unique_invs)):
+                unique_invs[i] += count
+                count += len(unique_invs[i])
+            unique_concat_invs = torch.cat(unique_invs)
+            timer.tick('generate_unique_invs')
 
-        teacher_output_normalized = teacher_output.softmax(1)
-        threshold = 0.8
-        teacher_output_valid_mask = (teacher_output_normalized.max(1)[0] > threshold)
-        teacher_pseudo_label = teacher_output_normalized.argmax(1)
-        teacher_pseudo_label[teacher_output_valid_mask] = 0
-        teacher_pseudo_label = teacher_pseudo_label[inv_shuffle]
-        teacher_pseudo_label = teacher_pseudo_label[unique_concat_invs]
-        teacher_pseudo_label = torch.split(teacher_pseudo_label, [len(label) for label in student_label_ori], dim=0)
+            shuffle = torch.randperm(unique_concat_invs.shape[0], device=unique_concat_invs[0].device)
+            inv_shuffle = torch.argsort(shuffle)
+            timer.tick('generate_shuffle')
 
-        (mix_fea, mix_rpz, mix_label) = lasermix((student_fea, student_rpz, student_label_ori), (teacher_fea, teacher_rpz, teacher_pseudo_label))
+            student_output = self(self.student, student_fea, student_rpz, batch_size, unique_invs=unique_concat_invs, shuffle=shuffle)
+            timer.tick('student_output')
+            teacher_output = self(self.teacher, teacher_fea, teacher_rpz, batch_size)
+            timer.tick('teacher_output')
+            cl_loss = self.loss_cl(student_output, teacher_output, student_label)
+            ls_loss = self.loss_ls(student_output.softmax(1), student_label, ignore=0)
+            timer.tick('calculate_loss')
 
-        mix_output = self(self.student, mix_fea, mix_rpz, 2 * batch_size)
-        mix_loss = self.loss_ls(mix_output.softmax(1), mix_label, ignore=0)
 
-        loss = cl_loss + ls_loss + mix_loss
+            teacher_output_normalized = teacher_output.softmax(1)
+            threshold = 0.8
+            teacher_output_valid_mask = (teacher_output_normalized.max(1)[0] > threshold)
+            teacher_pseudo_label = teacher_output_normalized.argmax(1)
+            teacher_pseudo_label[teacher_output_valid_mask] = 0
+            teacher_pseudo_label = teacher_pseudo_label[inv_shuffle]
+            teacher_pseudo_label = teacher_pseudo_label[unique_concat_invs]
+            teacher_pseudo_label = torch.split(teacher_pseudo_label, [len(label) for label in student_label_ori], dim=0)
+            timer.tick('generate_pseudo_label')
 
-        self.log('cl_loss', cl_loss, on_epoch=True, prog_bar=True)
-        self.log('ls_loss', ls_loss, on_epoch=True, prog_bar=True)
-        self.log('mix_loss', mix_loss, on_epoch=True, prog_bar=True)
-        self.log('train_loss', loss, on_epoch=True, prog_bar=True)
+            (mix_fea, mix_rpz, mix_label) = lasermix((student_fea, student_rpz, student_label_ori), (teacher_fea, teacher_rpz, teacher_pseudo_label))
+            timer.tick('lasermix')
+            # del student_fea, student_rpz, student_label_ori, teacher_fea, teacher_rpz, teacher_pseudo_label
+            # del teacher_output, student_output, teacher_output_normalized, teacher_output_valid_mask
+            # torch.cuda.empty_cache()
+
+            mix_label = torch.cat(mix_label, dim=0)
+            mix_output = self(self.student, mix_fea, mix_rpz, 2 * batch_size)
+            timer.tick('mix_output')
+
+            mix_loss = self.loss_ls(mix_output.softmax(1), mix_label, ignore=0)
+
+            loss = cl_loss + ls_loss + mix_loss
+            # del mix_fea, mix_rpz, mix_label, mix_output
+            # torch.cuda.empty_cache()
+
+            self.log('cl_loss', cl_loss, on_epoch=True, prog_bar=True)
+            self.log('ls_loss', ls_loss, on_epoch=True, prog_bar=True)
+            self.log('mix_loss', mix_loss, on_epoch=True, prog_bar=True)
+            self.log('train_loss', loss, on_epoch=True, prog_bar=True)
         return loss
 
 
