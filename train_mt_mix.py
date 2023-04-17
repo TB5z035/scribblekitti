@@ -20,7 +20,6 @@ def mix_mask(rpz_1, rpz_2, bound=(0, 50), bincount=10):
     odd_mask_2 = torch.div(rpz_2[:, 0], step, rounding_mode='floor') % 2 == 1
     return odd_mask_1, odd_mask_2
 
-
 def lasermix(data_1, data_2):
     fea_batch_1, rpz_batch_1, label_batch_1 = data_1
     fea_batch_2, rpz_batch_2, label_batch_2 = data_2
@@ -80,7 +79,7 @@ class LightningMixTrainer(LightningTrainer):
             timer.tick('update_teacher')
 
             student_rpz, student_fea, student_label_ori = batch['student']
-            teacher_rpz, teacher_fea, _ = batch['teacher']
+            teacher_rpz, teacher_fea, teacher_label_ori = batch['teacher']
             batch_size = len(student_rpz)
             student_label = torch.cat(student_label_ori, dim=0)
             timer.tick('split_batch')
@@ -105,18 +104,17 @@ class LightningMixTrainer(LightningTrainer):
             ls_loss = self.loss_ls(student_output.softmax(1), student_label, ignore=0)
             timer.tick('calculate_loss')
 
+            # teacher_output_normalized = teacher_output.softmax(1)
+            # threshold = 0.8
+            # teacher_output_valid_mask = (teacher_output_normalized.max(1)[0] > threshold)
+            # teacher_pseudo_label = teacher_output_normalized.argmax(1)
+            # teacher_pseudo_label[teacher_output_valid_mask] = 0
+            # teacher_pseudo_label = teacher_pseudo_label[inv_shuffle]
+            # teacher_pseudo_label = teacher_pseudo_label[unique_concat_invs]
+            # teacher_pseudo_label = torch.split(teacher_pseudo_label, [len(label) for label in student_label_ori], dim=0)
+            # timer.tick('generate_pseudo_label')
 
-            teacher_output_normalized = teacher_output.softmax(1)
-            threshold = 0.8
-            teacher_output_valid_mask = (teacher_output_normalized.max(1)[0] > threshold)
-            teacher_pseudo_label = teacher_output_normalized.argmax(1)
-            teacher_pseudo_label[teacher_output_valid_mask] = 0
-            teacher_pseudo_label = teacher_pseudo_label[inv_shuffle]
-            teacher_pseudo_label = teacher_pseudo_label[unique_concat_invs]
-            teacher_pseudo_label = torch.split(teacher_pseudo_label, [len(label) for label in student_label_ori], dim=0)
-            timer.tick('generate_pseudo_label')
-
-            (mix_fea, mix_rpz, mix_label) = lasermix((student_fea, student_rpz, student_label_ori), (teacher_fea, teacher_rpz, teacher_pseudo_label))
+            (mix_fea, mix_rpz, mix_label) = lasermix((student_fea, student_rpz, student_label_ori), (teacher_fea, teacher_rpz, teacher_label_ori))
             timer.tick('lasermix')
             # del student_fea, student_rpz, student_label_ori, teacher_fea, teacher_rpz, teacher_pseudo_label
             # del teacher_output, student_output, teacher_output_normalized, teacher_output_valid_mask
