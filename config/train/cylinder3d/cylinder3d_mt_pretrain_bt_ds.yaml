@@ -27,7 +27,6 @@ train_dataloader:
   batch_size: 2
   shuffle: True
   num_workers: 8
-  drop_last: True
 
 val_dataloader:
   batch_size: 2
@@ -55,3 +54,5 @@ optimizer:
 logger:
   project: 'scribblekitti_tbw'
   name: 'placeholder'
+
+load_checkpoint: '/home/tb5zhh/workspace/2023/scribblekitti/code/output/scribblekitti_tbw/pretrain_bt_ds/20230309-20:12:29/model/16.ckpt'
