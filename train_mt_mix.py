@@ -64,6 +64,29 @@ def lasermix(data_1, data_2):
 
     return tuple(zip(*mixed_data))
 
+def generate_determinent_perm(rpz):
+    unique_invs = [torch.unique(coord, return_inverse=True, dim=0)[1] for coord in rpz]
+    count = 0
+    for i in range(len(unique_invs)):
+        unique_invs[i] += count
+        count += len(unique_invs[i])
+    unique_concat_invs = torch.cat(unique_invs)
+
+    shuffle = torch.randperm(unique_concat_invs.shape[0], device=unique_concat_invs[0].device)
+    inv_shuffle = torch.argsort(shuffle)
+
+    return unique_concat_invs, shuffle, inv_shuffle
+
+def generate_pseudo_labels(threshold, output, shuffle_inv, unique_inv, split_count):
+    output_normalized = output.softmax(1)
+    output_valid_mask = (output_normalized.max(1)[0] > threshold)
+    pseudo_label = output_normalized.argmax(1)
+    pseudo_label[output_valid_mask] = 0
+    pseudo_label = pseudo_label[shuffle_inv]
+    pseudo_label = pseudo_label[unique_inv]
+    pseudo_label = torch.split(pseudo_label, split_count, dim=0)
+    return pseudo_label
+
 class LightningMixTrainer(LightningTrainer):
 
     def forward(self, model, fea, pos, batch_size, unique_invs=None, shuffle=None):
@@ -84,37 +107,38 @@ class LightningMixTrainer(LightningTrainer):
             student_label = torch.cat(student_label_ori, dim=0)
             timer.tick('split_batch')
 
-            unique_invs = [torch.unique(coord, return_inverse=True, dim=0)[1] for coord in student_rpz]
-            count = 0
-            for i in range(len(unique_invs)):
-                unique_invs[i] += count
-                count += len(unique_invs[i])
-            unique_concat_invs = torch.cat(unique_invs)
-            timer.tick('generate_unique_invs')
+            if 'lasermix' in self.config and self.config['lasermix']['mix_strategy'] == 'pseudo_label':
+                student_unique_concat_invs, student_shuffle, student_inv_shuffle = generate_determinent_perm(student_rpz)
+                teacher_unique_concat_invs, teacher_shuffle, teacher_inv_shuffle = generate_determinent_perm(teacher_rpz)
+                timer.tick('generate_determinent_perm')
+                student_output = self(self.student, student_fea, student_rpz, batch_size, unique_invs=student_unique_concat_invs, shuffle=student_shuffle)
+                timer.tick('student_output')
+                teacher_output = self(self.teacher, teacher_fea, teacher_rpz, batch_size, unique_invs=teacher_unique_concat_invs, shuffle=teacher_shuffle)
+                timer.tick('teacher_output')
+            elif 'lasermix' in self.config and self.config['lasermix']['mix_strategy'] == 'scribble':
+                student_output = self(self.student, student_fea, student_rpz, batch_size)
+                timer.tick('student_output')
+                teacher_output = self(self.teacher, teacher_fea, teacher_rpz, batch_size)
+                timer.tick('teacher_output')
+            else:
+                raise NotImplementedError
 
-            shuffle = torch.randperm(unique_concat_invs.shape[0], device=unique_concat_invs[0].device)
-            inv_shuffle = torch.argsort(shuffle)
-            timer.tick('generate_shuffle')
-
-            student_output = self(self.student, student_fea, student_rpz, batch_size, unique_invs=unique_concat_invs, shuffle=shuffle)
-            timer.tick('student_output')
-            teacher_output = self(self.teacher, teacher_fea, teacher_rpz, batch_size)
-            timer.tick('teacher_output')
             cl_loss = self.loss_cl(student_output, teacher_output, student_label)
             ls_loss = self.loss_ls(student_output.softmax(1), student_label, ignore=0)
             timer.tick('calculate_loss')
 
-            # teacher_output_normalized = teacher_output.softmax(1)
-            # threshold = 0.8
-            # teacher_output_valid_mask = (teacher_output_normalized.max(1)[0] > threshold)
-            # teacher_pseudo_label = teacher_output_normalized.argmax(1)
-            # teacher_pseudo_label[teacher_output_valid_mask] = 0
-            # teacher_pseudo_label = teacher_pseudo_label[inv_shuffle]
-            # teacher_pseudo_label = teacher_pseudo_label[unique_concat_invs]
-            # teacher_pseudo_label = torch.split(teacher_pseudo_label, [len(label) for label in student_label_ori], dim=0)
-            # timer.tick('generate_pseudo_label')
+            if 'lasermix' in self.config and self.config['lasermix']['mix_strategy'] == 'pseudo_label':
+                threshold = self.config['lasermix']['pseudo_label_threshold']
+                teacher_pseudo_label = generate_pseudo_labels(threshold, teacher_output, teacher_inv_shuffle, teacher_unique_concat_invs, [len(label) for label in teacher_label_ori])
+                student_pseudo_label = generate_pseudo_labels(threshold, student_output, student_inv_shuffle, student_unique_concat_invs, [len(label) for label in student_label_ori])
+                timer.tick('generate_pseudo_label')
 
-            (mix_fea, mix_rpz, mix_label) = lasermix((student_fea, student_rpz, student_label_ori), (teacher_fea, teacher_rpz, teacher_label_ori))
+            if 'lasermix' in self.config and self.config['lasermix']['mix_strategy'] == 'scribble':
+                (mix_fea, mix_rpz, mix_label) = lasermix((student_fea, student_rpz, student_label_ori), (teacher_fea, teacher_rpz, teacher_label_ori))
+            elif 'lasermix' in self.config and self.config['lasermix']['mix_strategy'] == 'pseudo_label':
+                (mix_fea, mix_rpz, mix_label) = lasermix((student_fea, student_rpz, student_pseudo_label), (teacher_fea, teacher_rpz, teacher_pseudo_label))
+            else:
+                raise NotImplementedError
             timer.tick('lasermix')
             # del student_fea, student_rpz, student_label_ori, teacher_fea, teacher_rpz, teacher_pseudo_label
             # del teacher_output, student_output, teacher_output_normalized, teacher_output_valid_mask
