@@ -120,15 +120,15 @@ class LightningTrainer(pl.LightningModule):
 if __name__=='__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--config_path', default='config/training.yaml')
-    parser.add_argument('--dataset_config_path', default='config/semantickitti.yaml')
+    parser.add_argument('--dataset_config_path', default='config/dataset/semantickitti.yaml')
     args = parser.parse_args()
 
     with open(args.config_path, 'r') as f:
         config = yaml.safe_load(f)
     with open(args.dataset_config_path, 'r') as f:
         config['dataset'].update(yaml.safe_load(f))
-    with open(args.dataset_config_path, 'r') as f:
-        config['val_dataset'].update(yaml.safe_load(f))
+    # with open(args.dataset_config_path, 'r') as f:
+        # config['val_dataset'].update(yaml.safe_load(f))
 
     config['logger']['name'] = args.config_path.split('/')[-1][:-5]
 

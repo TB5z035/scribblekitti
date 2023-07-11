@@ -4,6 +4,6 @@ max_bound: 50
 min_bound: 0
 
 dataset:
-  root_dir: 'data/sequences'
+  root_dir: '/data22/tb5zhh/datasets/SemanticKITTI/sequences'
   prefix: baseline
   aug: []

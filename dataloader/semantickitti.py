@@ -38,6 +38,7 @@ class Baseline(SemanticKITTI, prefix='baseline'):
     def load_file_paths(self, split='train', label_directory='labels'):
         self.lidar_paths = []
         self.label_paths = []
+        self.pose_paths = []
         for seq in self.config['split'][split]:
             seq = '{0:02d}'.format(int(seq))
 
@@ -49,6 +50,8 @@ class Baseline(SemanticKITTI, prefix='baseline'):
             label_paths = [os.path.join(dp, f) for dp, dn, fn in os.walk(os.path.expanduser(label_dir)) for f in fn if f.endswith('.label')]
             assert (len(lidar_paths) == len(label_paths))
             self.label_paths.extend(label_paths)
+            pose_path = os.path.join(self.root_dir,seq,'pose.txt')
+            self.pose_paths.append(pose_path)
         self.lidar_paths.sort()
         self.label_paths.sort()
 
@@ -281,6 +284,22 @@ class PLSCylindricalTwinSample(PLSCylindricalTwin, prefix='pls_cylindrical_twin_
         self.label_paths = self.label_paths[::1000]
     pass
 
+
+class CylindricalLess(Cylindrical, prefix='cylindrical_less'):
+
+    def __getitem__(self, idx):
+        xyzr = self.get_lidar(idx)
+        label = self.get_label(idx)
+
+        return [
+            self.get_cylindrical_scene(xyzr, label, self.config.get('aug', None)),
+            self.get_cylindrical_scene(xyzr, label, self.config.get('aug', None)),
+        ]
+    
+    def get_pose(self):
+        a = 1
+        
+    
 
 
 if __name__ == '__main__':

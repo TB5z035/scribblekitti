@@ -48,3 +48,22 @@ optimizer:
 logger:
   project: 'scribblekitti'
   name: 'training'
+
+
+# scans_per_subsequence means t scans in one subsequence 
+# l_grid means divide the ground into l_grid*l_grid blocks
+# iter_max means the RANSAC stops if iter == iter_max, which is one of stop condition
+# precent is another stop condition, when the ground points >= percent * all_points
+# dist is the highest bar that a point is treated as a inner point(ground point)
+# we treat a point as ground point, when its distance to the fitting flat <  dist 
+# the cluster_d is the d in the paper, which is in the formula:
+#                 τ (u, v) = max(ru, rv) × d
+LESS:
+  RANSAC:
+    scans_per_subsequence: 5
+    l_grid: 5
+    iter_max: 100
+    percent: 0.8
+    dist: 3
+  cluster:
+    d: 0.1
