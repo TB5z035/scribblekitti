@@ -7,7 +7,7 @@ pretrain_loss:
   coef: 0.0051
 
 dataset:
-  root_dir: 'data/sequences'
+  root_dir: '/data22/tb5zhh/datasets/SemanticKITTI/sequences'
   prefix: pls_cylindrical_twin
   spatial_shape: [480,360,32]
   max_bound: [50,3.1415926,2]
@@ -16,7 +16,7 @@ dataset:
   bin_size: [[24,9],[48,18],[96,36]]
 
 val_dataset:
-  root_dir: 'data/sequences'
+  root_dir: '/data22/tb5zhh/datasets/SemanticKITTI/sequences'
   prefix: pls_cylindrical_sample
   spatial_shape: [480,360,32]
   max_bound: [50,3.1415926,2]
@@ -25,7 +25,7 @@ val_dataset:
   bin_size: [[24,9],[48,18],[96,36]]
 
 train_dataloader:
-  batch_size: 2
+  batch_size: 1
   shuffle: True
   num_workers: 8
 

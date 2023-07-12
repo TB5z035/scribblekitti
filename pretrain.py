@@ -17,8 +17,8 @@ from torch.optim import Adam
 from torch.utils.data import DataLoader
 
 import wandb
-from dataloader.semantickitti import SemanticKITTI
-from network.cylinder3d import Cylinder3DProject
+from dataloader.semantickitti import SemanticKITTI, Baseline
+from network.cylinder3d import Cylinder3DProject, Cylinder3D
 from utils.barlow_twins_loss import BarlowTwinsLoss, MECTwinsLoss
 
 patch_sklearn()
@@ -36,7 +36,8 @@ class LightningTrainer(pl.LightningModule):
         self.config = config
         self._load_dataset_info()
         self.network = Cylinder3DProject(nclasses=self.nclasses, downsample=False, **config['model'])
-
+        # self.network = Cylinder3D(nclasses=self.nclasses, downsample=False, **config['model'])
+        
         loss_type = self.config['pretrain_loss']['type']
         self.loss = PRETRAIN_LOSS[loss_type](self.network.feature_size, **self.config['pretrain_loss'])
 
@@ -47,9 +48,20 @@ class LightningTrainer(pl.LightningModule):
         return features
 
     def training_step(self, batch, batch_idx):
-        (rpz_a, fea_a, label_), (rpz_b, fea_b, label_b) = batch
+        # import IPython
+        # IPython.embed()
+        (rpz_a, fea_a, label_a) = batch[0]
+        (rpz_b, fea_b, label_b) = batch[1]
+        rpz_a1 = torch.cat(rpz_a, dim=0)
+        rpz_b1 = torch.cat(rpz_b, dim=0)
+        shuffle = torch.randperm(feats.shape[0], device=feat[0].device)
+        coords = coords[shuffle, :]
+        unique_coords, unique_inv = torch.unique(coords, return_inverse=True, dim=0)
+
         output_a = self(self.network, fea_a, rpz_a)
         output_b = self(self.network, fea_b, rpz_b)
+        # import IPython
+        # IPython.embed()
         loss = self.loss(output_a, output_b)
 
         self.log('pretrain_loss', loss, prog_bar=True)
@@ -65,8 +77,12 @@ class LightningTrainer(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         if self.global_rank == 0:
-            rpz, fea, _ = batch
-            output = self(self.network, fea, rpz)
+            # import IPython
+            # IPython.embed()
+            rpz, fea, _ = batch[0][0]
+            # import IPython
+            # IPython.embed()
+            output = self(self.network, (fea,), (rpz,))
             return output.cpu()[::100]
         else:
             return None
@@ -88,8 +104,8 @@ class LightningTrainer(pl.LightningModule):
         return [optimizer]
 
     def setup(self, stage):
-        self.train_dataset = SemanticKITTI(split='train', config=self.config['dataset'])
-        self.val_dataset = SemanticKITTI(split='valid', config=self.config['val_dataset'])
+        self.train_dataset = Baseline(split='train', config=self.config['dataset'])
+        self.val_dataset = Baseline(split='valid', config=self.config['val_dataset'])
 
     def train_dataloader(self):
         return DataLoader(dataset=self.train_dataset, collate_fn=self.train_dataset._collate_fn, **self.config['train_dataloader'])

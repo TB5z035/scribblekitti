@@ -8,11 +8,12 @@ class TwinsLoss(nn.Module):
         super().__init__()
 
     def _assert_feat(self, feature_a, feature_b):
-        batch_size_a, feature_size_a = feature_a.shape
-        batch_size_b, feature_size_b = feature_b.shape
+        feature_size_a, batch_size_a = feature_a.shape
+        feature_size_b, batch_size_b = feature_b.shape
         assert batch_size_a == batch_size_b, f"Batch size {batch_size_a} is not equal to {batch_size_b}"
         assert feature_size_a == feature_size_b, f"Feature size {feature_size_a} is not equal to {feature_size_b}"
-        return batch_size_a, feature_size_a
+        # feature_size = min(feature_size_a, feature_size_b)
+        return batch_size_a, feature_size
 
     def forward(self, feature_a, feature_b):
         raise NotImplementedError
@@ -71,6 +72,6 @@ class MECTwinsLoss(TwinsLoss):
                 sum_p += power / i
             else:
                 sum_p -= power / i
-        loss = -self.mu * torch.trace(sum_p)
+        loss = - self.mu * torch.trace(sum_p)
         
         return loss

@@ -65,7 +65,7 @@ class FeatureGenerator(nn.Module):
             unique_coords, unique_inv = torch.unique(coords, return_inverse=True, dim=0)
 
         # Generate features
-        feats = self.net(feats)
+        feats = self.net(feats)[0]
         feats = torch_scatter.scatter_max(feats, unique_inv, dim=0)[0]
         feats = self.compress(feats)
         return feats, unique_coords.type(torch.int64)
@@ -130,6 +130,8 @@ class Cylinder3D(nn.Module):
                                    hid_feat=hid_feat)
 
     def forward(self, feat, coord, batch_size, unique_invs=None, shuffle=None):
+        # import IPython
+        # IPython.embed()
         feat, coord = self.fcnn(feat, coord, unique_invs, shuffle)
         return self.unet(feat, coord, batch_size)
 
@@ -141,4 +143,12 @@ class Cylinder3DProject(Cylinder3D):
                                         bias=True)
     def forward(self, feat, coord, batch_size, unique_invs=None, shuffle=None):
         y, hidden = super().forward(feat, coord, batch_size, unique_invs, shuffle)
-        return y, self.projector(hidden).features
+        # import IPython
+        # IPython.embed()
+        
+        # y.shape.shape is [1, 20, 480, 360, 32]
+        # hidden.shape is [1, 128, 480, 360, 32] as sparse Tensor
+        
+        # feature nums may differ
+        return y, self.projector(hidden).features # later.shape is [46952, 128]
+        # return y, self.projector(hidden).dense().reshape(-1, 1)
