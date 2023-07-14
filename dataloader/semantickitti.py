@@ -38,7 +38,6 @@ class Baseline(SemanticKITTI, prefix='baseline'):
     def load_file_paths(self, split='train', label_directory='labels'):
         self.lidar_paths = []
         self.label_paths = []
-        self.pose_paths = []
         for seq in self.config['split'][split]:
             seq = '{0:02d}'.format(int(seq))
 
@@ -50,8 +49,6 @@ class Baseline(SemanticKITTI, prefix='baseline'):
             label_paths = [os.path.join(dp, f) for dp, dn, fn in os.walk(os.path.expanduser(label_dir)) for f in fn if f.endswith('.label')]
             assert (len(lidar_paths) == len(label_paths))
             self.label_paths.extend(label_paths)
-            pose_path = os.path.join(self.root_dir,seq,'pose.txt')
-            self.pose_paths.append(pose_path)
         self.lidar_paths.sort()
         self.label_paths.sort()
 
@@ -163,7 +160,7 @@ class Cylindrical(Baseline, prefix='cylindrical'):
 
         rpz = self.cart2cyl(xyz)
         clipped_rpz = np.clip(rpz, self.min_bound, self.max_bound)
-        rpz_discrete = (np.floor((clipped_rpz - self.min_bound) / self.drpz)).astype(np.int)
+        rpz_discrete = (np.floor((clipped_rpz - self.min_bound) / self.drpz)).astype(int)
 
         center = (rpz_discrete.astype(np.float32) + 0.5) * self.drpz + self.min_bound
         centered_rpz = rpz - center
@@ -286,25 +283,105 @@ class PLSCylindricalTwinSample(PLSCylindricalTwin, prefix='pls_cylindrical_twin_
 
 
 class CylindricalLess(Cylindrical, prefix='cylindrical_less'):
+    def __init__(self, split, config):
+        super().__init__(split, config)
+        # self.pose_paths = []
+        # pose_path = os.path.join(self.root_dir,seq,'pose.txt')
+        # self.pose_paths.append(pose_path)
 
     def __getitem__(self, idx):
+        # 有一些保存之后, N*20和N*1的size不同，需要注意，两个例子1953和2132，都比较靠后，但是1800是ok的
         xyzr = self.get_lidar(idx)
         label = self.get_label(idx)
+        label_group = self.get_label_group(idx)
+        LESS_labels = self.get_LESS_labels(idx)
+        # label_group = self.get_label_group(idx)
+        if 'aug' in self.config:
+            student_aug = self.config['aug']['student']
+            teacher_aug = self.config['aug']['teacher']
+        else:
+            student_aug = teacher_aug = None
+        return {
+            'student': self.get_cylindrical_scene(xyzr, label, student_aug),
+            'teacher': self.get_cylindrical_scene(xyzr, label, teacher_aug),
+            'label_group' : torch.from_numpy(label_group).squeeze().long(),
+            'LESS_labels' : torch.from_numpy(LESS_labels).squeeze().long()
+        }
+    
+    def __len__(self):
+        return len(self.label_group_paths)
+        # return 100
+        # here! 
+    @staticmethod
+    def _collate_fn(batch):
+        batch_size = len(batch)
+        stu_xyzrs, stu_feas, stu_labels = zip(*[i['student'] for i in batch])       # zip different stu_xyzrs... in different batch together
+        tea_xyzrs, tea_feas, tea_labels = zip(*[i['teacher'] for i in batch])
+        label_group = torch.cat([i['label_group'] for i in batch],dim=0)
+        LESS_labels = torch.cat([i['LESS_labels'] for i in batch],dim=0)
+        return {
+            'student': (stu_xyzrs, stu_feas, stu_labels),
+            'teacher': (tea_xyzrs, tea_feas, tea_labels),
+            'label_group' : label_group,
+            'LESS_labels' : LESS_labels,
+        }
 
-        return [
-            self.get_cylindrical_scene(xyzr, label, self.config.get('aug', None)),
-            self.get_cylindrical_scene(xyzr, label, self.config.get('aug', None)),
-        ]
+    def get_label_group(self, idx):
+        # the label_group contains 0,1,2,3
+        # noting, scribbles, propogated, weak
+        #   0         1          2         3 
+        # noting means this points even don't have weak label, which means it is not group points,
+        # and after cluster, all points in its group don't have any label.
+        # the size shoud be N*1, the N represents the number of points in this scan, which shoud be the same as the N in N*4 lidar data.
+        label_path = self.label_group_paths[idx]
+        label = np.fromfile(label_path, dtype=np.int8)
+        # label = label.reshape((-1)) & 0xFFFF
+        return label
     
-    def get_pose(self):
-        a = 1
-        
+    def get_LESS_labels(self, idx):
+        # the output should be N*20, N is the same as the "N" mentioned above.
+        # 20 means our 20 classes. It is encoded in one-hot format.
+        # this 20 classes have been mapped.
+        label_path = self.LESS_labels_paths[idx]
+        label = np.fromfile(label_path, dtype=bool)
+        # label = label.reshape((-1)) & 0xFFFF
+        return label.reshape((-1, 20))
     
+    def load_file_paths(self, split='train', label_directory='labels'):
+        self.lidar_paths = []
+        self.label_paths = []
+        self.label_group_paths = []
+        self.LESS_labels_paths = []
+        for seq in self.config['split'][split]:
+            seq = '{0:02d}'.format(int(seq))
+
+            lidar_dir = os.path.join(self.root_dir, seq, 'velodyne')
+            lidar_paths = [os.path.join(dp, f) for dp, dn, fn in os.walk(os.path.expanduser(lidar_dir)) for f in fn if f.endswith('.bin')]
+            self.lidar_paths.extend(lidar_paths)
+
+            label_dir = os.path.join(self.root_dir, seq, label_directory)
+            label_paths = [os.path.join(dp, f) for dp, dn, fn in os.walk(os.path.expanduser(label_dir)) for f in fn if f.endswith('.label')]
+            assert (len(lidar_paths) == len(label_paths))
+            self.label_paths.extend(label_paths)
+
+            label_group_dir = os.path.join(self.root_dir, seq, 'LESS','group')
+            label_group_paths = [os.path.join(dp, f) for dp, dn, fn in os.walk(os.path.expanduser(label_group_dir)) for f in fn if f.endswith('.label')]
+            # assert (len(lidar_paths) == len(label_group_paths))
+            self.label_group_paths.extend(label_group_paths)
+
+            LESS_label_dir = os.path.join(self.root_dir, seq, 'LESS','labels')
+            LESS_labels_paths = [os.path.join(dp, f) for dp, dn, fn in os.walk(os.path.expanduser(LESS_label_dir)) for f in fn if f.endswith('.label')]
+            # assert (len(lidar_paths) == len(LESS_labels_paths))
+            self.LESS_labels_paths.extend(LESS_labels_paths)
+        self.lidar_paths.sort()
+        self.label_paths.sort()
+        self.label_group_paths.sort()
+        self.LESS_labels_paths.sort()
 
 
 if __name__ == '__main__':
     import yaml
-    config_path = 'config/train/cylinder3d/cylinder3d_mt.yaml'
+    config_path = 'config/train/cylinder3d/cylinder3d_mt_LESS.yaml'
     dataset_config_path = 'config/dataset/semantickitti.yaml'
 
     with open(config_path, 'r') as f:

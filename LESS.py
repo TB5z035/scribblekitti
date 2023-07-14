@@ -271,11 +271,13 @@ class LESS():
         # save group array, size N*1, value can be 0,1,2,3, which represents the nothing, scribbles, propogated and weak.
         # save the label array, size N*20, value is one hot encoded
         file_len_old = 0
+
+        # the length of slice may be somthing wrong. Check it again.
         for file_len,file_name in zip(file_len_list,file_list):
             label_class_file = os.path.join(label_class_dir,file_name)
             labels_file = os.path.join(labels_dir,file_name)
             label_class[file_len_old:file_len].tofile(label_class_file)
-            label_save[file_len_old:file_len].tofile(labels_file)
+            label_save[file_len_old:file_len,:].tofile(labels_file)
             file_len_old = file_len
             self.scans_cnt += 1
             toc = time.time()

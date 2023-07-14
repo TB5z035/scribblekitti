@@ -38,6 +38,7 @@ The params are divided into "RANSAC" and "cluster". The introduction of params i
 **dist** is the highest bar that a point is treated as a inner point(ground point)
 
 we treat a point as ground point, when its distance to the fitting flat <  dist 
+
 the cluster_d is the d in the paper, which is in the formula:
 
 ``
