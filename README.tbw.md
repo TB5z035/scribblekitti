@@ -32,6 +32,17 @@ python pretrain.py --config_path config/pretrain/bt_pls.yaml --dataset_config_pa
 
 ```shell
 python train.py --config_path config/pretrain/bt_pls.yaml --dataset_config_path config/pretrain/semantickitti.yaml
+
+export WANDB_DIR=/data14/chenyh2306/scribblekitti/wandb/
+export WANDB_CACHE_DIR=/data14/chenyh2306/scribblekitti/wandb/.cache/
+export WANDB_CONFIG_DIR=/data14/chenyh2306/scribblekitti/wandb/.config/
+export TMPDIR=~/tmp
+
+cd /data14/chenyh2306/scribblekitti/
+conda activate /data14/chenyh2306/anaconda3/envs/cyh2306/
+srun -w discover-01 -t 3-0 -G 2 python train_mt.py --config_path /data14/chenyh2306/scribblekitti/config/train/cylinder3d/cylinder3d_mt.yaml --dataset_config_path /data14/chenyh2306/scribblekitti/config/dataset/semantickitti.yaml
+
+CUDA_VISIBLE_DEVICES="7" python save_mt.py --config_path config/train/cylinder3d/cylinder3d_mt.yaml  --dataset_config_path config/dataset/semantickitti.yaml --checkpoint_path output/scribblekitti/cylinder3d_mt/ckpt/epoch=72-val_teacher_miou=60.03.ckpt --save_dir inference
 ```
 * `?`: plain Cylinder3D tuning
 * `?`: Barlow Twins pretrained Cylinder3D tuning

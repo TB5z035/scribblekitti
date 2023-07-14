@@ -3,7 +3,7 @@ model:
   hid_feat: 32
 
 dataset:
-  root_dir: 'data/sequences'
+  root_dir: '/data22/tb5zhh/datasets/SemanticKITTI/sequences'
   prefix: cylindrical_mt
   label_directory: scribbles
   spatial_shape: [480,360,32]
@@ -15,7 +15,7 @@ dataset:
   bin_size: [[24,9],[48,18],[96,36]]
 
 val_dataset:
-  root_dir: 'data/sequences'
+  root_dir: '/data22/tb5zhh/datasets/SemanticKITTI/sequences'
   prefix: cylindrical_mt
   label_directory: labels
   spatial_shape: [480,360,32]
@@ -26,17 +26,17 @@ val_dataset:
 train_dataloader:
   batch_size: 2
   shuffle: True
-  num_workers: 8
+  num_workers: 4
 
 val_dataloader:
   batch_size: 2
   shuffle: False
-  num_workers: 8
+  num_workers: 4
 
 test_dataloader:
   batch_size: 1
   shuffle: False
-  num_workers: 4
+  num_workers: 2
 
 trainer:
   max_epochs: 75
@@ -47,10 +47,11 @@ trainer:
   sync_batchnorm: True
   accumulate_grad_batches: 1
   num_sanity_val_steps: 1
+# load_checkpoint: output/scribblekitti/cylinder3d_mt/ckpt/epoch=72-val_teacher_miou=60.03.ckpt
 
 optimizer:
   lr: 0.001
 
 logger:
-  project: 'scribblekitti_tbw'
-  name: 'placeholder'
+  project: 'scribblekitti'
+  name: 'noDropout'

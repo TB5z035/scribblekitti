@@ -31,8 +31,20 @@ class LightningTrainer(pl.LightningModule):
         if 'load_checkpoint' in self.config['trainer']:
             ckpt_path = self.config['trainer']['load_checkpoint']
             state_dict = torch.load(ckpt_path)
-            self.student.load_state_dict(state_dict)
-            self.teacher.load_state_dict(state_dict)
+            state_copy = state_dict.copy()
+            state_copy["state_dict"]["student"] = {}
+            state_copy["state_dict"]["teacher"] = {}
+            for key in state_dict["state_dict"].keys():
+                if key.startswith("student."):
+                    rear = key[8:]
+                    state_copy["state_dict"]["student"][rear] = state_dict["state_dict"][key]
+                elif key.startswith("teacher."):
+                    rear = key[8:]
+                    state_copy["state_dict"]["teacher"][rear] = state_dict["state_dict"][key]
+            del state_dict
+            state_dict = state_copy
+            self.student.load_state_dict(state_dict["state_dict"]["student"])
+            self.teacher.load_state_dict(state_dict["state_dict"]["teacher"])
             print('loaded checkpoint from ' + ckpt_path)
         self.initialize_teacher()
 
@@ -175,7 +187,11 @@ if __name__=='__main__':
     wandb_logger = WandbLogger(config=config,
                                save_dir=config['trainer']['default_root_dir'],
                                **config['logger'])
-    model = LightningTrainer(config)
+    if "load_checkpoint" in config:
+        model = LightningTrainer.load_from_checkpoint(config["load_checkpoint"])
+        print('loaded checkpoint from ' + config["load_checkpoint"])
+    else:
+        model = LightningTrainer(config)
     Trainer(logger=wandb_logger,
             callbacks=model.get_model_callback(),
             **config['trainer']).fit(model)
