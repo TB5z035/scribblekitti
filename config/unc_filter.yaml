@@ -1,0 +1,7 @@
+dataset:
+  root_dir: '/data22/tb5zhh/datasets/SemanticKITTI/sequences'
+  prefix: baseline
+  aug: []
+
+# use cuda or not
+cuda: True

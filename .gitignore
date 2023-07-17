@@ -135,4 +135,5 @@ dmypy.json
 # macOS
 .DS_Store
 
-*.h5
+inference/
+tmp/
