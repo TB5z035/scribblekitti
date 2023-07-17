@@ -18,34 +18,38 @@ if __name__=='__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--config_path', default='config/unc_filter.yaml')
     parser.add_argument('--dataset_config_path', default='config/semantickitti.yaml')
-    parser.add_argument('--save_dir', default='output')
-    parser.add_argument('--pseudo_name', default='crb')
+    parser.add_argument('--stat_dir', default='inference')
+    parser.add_argument('--save_dir', default='pseudo_label')
+    parser.add_argument('--pseudo_name', default='unc')
     args = parser.parse_args()
 
     config = yaml.safe_load(open(args.config_path, 'r'))
     config['dataset'].update(yaml.safe_load(open(args.dataset_config_path, 'r')))
     ds = SemanticKITTI(split='train', config=config['dataset'])
     num_classes = len(config['dataset']['labels'])
-    hf = h5py.File(os.path.join(args.save_dir, 'training_results.h5'), 'r')
+    hf = h5py.File(os.path.join(args.stat_dir, 'training_results.h5'), 'r')
     cuda = config["cuda"]
     # for all data in the train split, filter out the pseudo label
     print('Filtering the pseudo label')
     for i in tqdm(range(len(ds))):
-        label_path = ds.label_paths[i]
+        label_path = ds.label_paths[i] # e.g. dataset/sequences/00/scribbles/000000.label
         predicted_labels = hf[os.path.join(label_path, 'label')][()]
         uncertainty_scores = hf[os.path.join(label_path, 'unc')][()]
         lidar = ds.get_lidar(i)
         
         init_dist_a = GammaDistribution(2, 3)
         init_dist_b = GammaDistribution(3, 2)
-        filter_mask = mixture_filter(uncertainty_scores, init_dist_a, init_dist_b, cuda=cuda)
-
+        filter_mask = mixture_filter(uncertainty_scores, init_dist_a, init_dist_b)
         # Save pseudo-labels
-        new_labels = predicted_labels[filter_mask]
+        new_labels = predicted_labels[filter_mask[:, 0]]
         # true_label = learning_map_inv[scribbles].astype(np.uint32)
-        crb_path = pathlib.Path(label_path.replace('scribbles', 'unc'))
-        crb_path.parents[0].mkdir(parents=True, exist_ok=True)
-        new_labels.tofile(crb_path)
+        path_split = label_path.split('/')
+        path_split[-2] = args.pseudo_name
+        unc_path = pathlib.Path(args.save_dir, *path_split[-4:])
+        print(unc_path)
+        # crb_path = pathlib.Path(label_path.replace('scribbles', 'unc'))
+        unc_path.parents[0].mkdir(parents=True, exist_ok=True)
+        new_labels.tofile(unc_path)
     hf.close()
     
 # def filter_uncertainty_from_obj(dataset_root: str, stat_root: str, save_root: str, cuda=True):

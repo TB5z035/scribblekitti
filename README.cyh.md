@@ -53,7 +53,18 @@ CUDA_VISIBLE_DEVICES="7" python save_mt.py --config_path config/train/cylinder3d
 * `?`: MEC pretrained Cylinder3D tuning
 
 ### unc_inference
+```shell
+pip install --upgrade numpy==1.20.1 -i https://pypi.tuna.tsinghua.edu.cn/simple
+
 srun -w discover-01 -t 2-0 -G 1 python unc_inference.py --config_path config/train/cylinder3d/cylinder3d_mt_unc.yaml  --dataset_config_path config/dataset/semantickitti.yaml --checkpoint_path output/scribblekitti/cylinder3d_mt/ckpt/epoch=72-val_teacher_miou=60.03.ckpt --save_dir inference
+
+```
+### unc_filter
+```shell
+pip install --upgrade numpy -i https://pypi.tuna.tsinghua.edu.cn/simple
+
+srun -t 2-0 -G 1 python unc_filter.py --config_path config/unc_filter.yaml  --dataset_config_path config/dataset/semantickitti.yaml --stat_dir inference --save_dir pseudo_labels
+```
 
 ### Note
 

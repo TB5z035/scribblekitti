@@ -67,7 +67,7 @@ def spectral_cluster(
             embeddings = embeddings.cpu().numpy()
 
     cl_result = KMeans(n_clusters=len(init_indices), init=embeddings[init_indices]).fit(embeddings)
-    cluster_indices = init_indices[cl_result.labels_]spec
+    cluster_indices = init_indices[cl_result.labels_] # spec
     confidence = cl_result.transform(embeddings).min(axis=1)
     return cluster_indices, confidence
 
