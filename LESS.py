@@ -13,7 +13,7 @@ class LESS():
         self.config = config
         self.split = split
         self.label_directory = label_directory
-        self.target_directory = target_directory
+        self.target_directory = config_LESS['target_directory']
         self.t = config_LESS['RANSAC']['scans_per_subsequence']
         self.l_grid = config_LESS['RANSAC']['l_grid']
         self.dist = config_LESS['RANSAC']['dist']
@@ -21,6 +21,9 @@ class LESS():
         self.percent = config_LESS['RANSAC']['percent']
         self.d = config_LESS['cluster']['d']
         self.tic = 0
+        self.Save = True
+        self.OOM_bar = config_LESS['RANSAC']['OOM_bar']
+
 
     def map_label(self,label, map_dict):
         maxkey = 0
@@ -73,27 +76,32 @@ class LESS():
         lidar_path.sort()
         label_path.sort()
         cnt = 0
-        label_file_exist = os.listdir(label_path[0].replace('scribbles','LESS/group').split('/000000.label')[0])
+        label_file_exist = os.listdir(label_path[0].replace('scribbles',self.target_directory+'/group').split('/000000.label')[0])
         label_file_exist.sort()
         len_file_exist = len(label_file_exist)
+        # len_file_exist = 4000
 
         for lidar_file,label_file in zip(lidar_path,label_path):
-            # label_file_exist = os.path.join(seq_path,label_file.split('/scribbles/')[1])
-            # label_file_exist = label_file.replace('scribbles','LESS/group')
+            
+            # pass the existed files
             if self.scans_cnt < len_file_exist:
                 self.scans_cnt += 1
+                pose = pose_file.readline()
                 continue
-            # if os.path.exists(label_file_exist):
-            #     self.scans_cnt += 1
-            #     continue
 
+            # start a new subsequence 
             if cnt == 0: 
                 file_list = []
                 file_len_list = []
                 lidar_xyz_unified = np.array([[0,0,0]],dtype=np.float32)
                 label_unified = np.array([[0]])
+
+            # read the pose and aggregate scans
             pose = pose_file.readline()
             r11,r12,r13,t14,r21,r22,r23,t24,r31,r32,r33,t34 = list(map(float, pose.split(' ')))
+            # pose_SE3 = np.array([[r11,r12,r13,t14],[r21,r22,r23,t24],[r31,r32,r33,t34],[0,0,0,1]])
+            # pose_SE3_inv = np.linalg.inv(pose_SE3)
+            # (r11,r12,r13,t14),(r21,r22,r23,t24),(r31,r32,r33,t34),(_,_,_,_)=pose_SE3_inv
             lidar_data = np.fromfile(lidar_file,dtype=np.float32)
             lidar_data = lidar_data.reshape((-1,4))
             lidar_x = lidar_data[:,0]
@@ -103,9 +111,11 @@ class LESS():
             label = label.reshape((-1)) & 0xFFFF
             label = self.map_label(label, self.config['learning_map'])
             # Matrix_RT = np.array([r11,r12,r13,t11],[r21,r22,r23,t12],[r31,r32,r33,t13],[0,0,0,1])
+            
             lidar_x = lidar_x*r11 +r12*lidar_y+r13*lidar_z + t14
             lidar_y = lidar_x*r21 +r22*lidar_y+r23*lidar_z + t24
             lidar_z = lidar_x*r31 +r32*lidar_y+r33*lidar_z + t34
+
             lidar_x = np.expand_dims(lidar_x,axis=1)
             lidar_y = np.expand_dims(lidar_y,axis=1)
             lidar_z = np.expand_dims(lidar_z,axis=1)
@@ -115,32 +125,107 @@ class LESS():
             label_unified = np.concatenate((label_unified,label),axis=0)        # OK
             file_list.append(label_file.split(self.label_directory+'/')[1])
             file_len_list.append(len(lidar_xyz_unified)-1)
-            label_save = np.zeros((lidar_xyz_unified.shape[0]-1,20),dtype=bool)
-            label_class = np.expand_dims(np.zeros(lidar_xyz_unified.shape[0]-1,dtype=np.int8),axis=1)
 
             cnt += 1
             if cnt == t:
+                label_save = np.zeros((lidar_xyz_unified.shape[0]-1,20),dtype=bool)
+                label_class = np.expand_dims(np.zeros(lidar_xyz_unified.shape[0]-1,dtype=np.int8),axis=1)
                 self.tic = time.time()
                 lidar_xyz_unified = lidar_xyz_unified[1:,:]     # get all points in one axis
                 label_unified = label_unified[1:,:]
-                y_max = np.max(lidar_xyz[:,1])
-                y_min = np.min(lidar_xyz[:,1])
-                x_max = np.max(lidar_xyz[:,0])
-                x_min = np.min(lidar_xyz[:,0])
-                for i in range(int(np.round(x_min/l_grid)),int(np.round(x_max/l_grid))):
-                    for j in range(int(np.round(y_min/l_grid)),int(np.round(y_max/l_grid))):
-                        grid_x_min = i*l_grid
-                        grid_x_max = (i+1)*l_grid
-                        grid_y_min = j*l_grid
-                        grid_y_max = (j+1)*l_grid
-                        indice = np.logical_and(np.logical_and(lidar_xyz_unified[:,1]>grid_y_min ,lidar_xyz_unified[:,1]<grid_y_max),np.logical_and(lidar_xyz_unified[:,0]>grid_x_min ,lidar_xyz_unified[:,0]<grid_x_max ) )       
-                        if np.where(indice==True)[0].shape[0] >= 3:
-                            lidar_xyz_unified[indice],label_save[indice],label_class[indice] = self.RANSAC(lidar_xyz_unified=lidar_xyz_unified[indice],label_save=label_save[indice],label_class=label_class[indice],label_unified=label_unified[indice],dist=dist,iter_max=iter_max,percent=percent)
+
+                # For visualization, save Origin points
+                if self.Save:
+                    lidar_xyz_unified.tofile(str(lidar_xyz_unified.shape[0])+'_Origin.bin')
+                y_max = np.max(lidar_xyz_unified[:,1])
+                y_min = np.min(lidar_xyz_unified[:,1])
+                x_max = np.max(lidar_xyz_unified[:,0])
+                x_min = np.min(lidar_xyz_unified[:,0])
+                flag_points_less_than_OOM = True
+                cnt_OOM = 0
+                lidar_xyz_unified_copy = lidar_xyz_unified
+                while flag_points_less_than_OOM:
+                    lidar_xyz_unified = lidar_xyz_unified_copy.copy()
+
+                    # run RANSAC for each block
+                    for i in range(int(np.round(x_min/l_grid)),int(np.round(x_max/l_grid))):
+                        for j in range(int(np.round(y_min/l_grid)),int(np.round(y_max/l_grid))):
+                            grid_x_min = i*l_grid
+                            grid_x_max = (i+1)*l_grid
+                            grid_y_min = j*l_grid
+                            grid_y_max = (j+1)*l_grid
+                            indice = np.logical_and(np.logical_and(lidar_xyz_unified[:,1]>grid_y_min ,lidar_xyz_unified[:,1]<grid_y_max),np.logical_and(lidar_xyz_unified[:,0]>grid_x_min ,lidar_xyz_unified[:,0]<grid_x_max ) ) 
+                            if np.where(indice==True)[0].shape[0] >= 3:
+                                lidar_xyz_unified[indice],label_save[indice],label_class[indice] = self.RANSAC(lidar_xyz_unified=lidar_xyz_unified[indice],label_save=label_save[indice],label_class=label_class[indice],label_unified=label_unified[indice],dist=self.dist,iter_max=iter_max,percent=percent)
+                    
+                    # avoid OOM
+                    if len(np.unique(np.where(lidar_xyz_unified!=np.array([0,0,0])[0]))) < self.OOM_bar:
+                        flag_points_less_than_OOM = False
+                    else:
+                        cnt_OOM += 1
+                        if cnt_OOM >= 5:
+                            cnt_OOM = 0
+                            self.dist += 0.5 
+                        print('points shape is (',len(np.unique(np.where(lidar_xyz_unified!=np.array([0,0,0])[0]))),', 3), May cause OOM',flush=True)
+                
                 cnt = 0
                 self.cluster(lidar_xyz_unified=lidar_xyz_unified,labels=label_unified,label_save=label_save,label_class=label_class,file_list=file_list,file_len_list=file_len_list,d=d,seq=seq)
-            # lidar_xyz_SE3 = np.concatenate(lidar_xyz)
-            pass
-        pass
+                
+                # if only save points, don't need to process next subsequence 
+                if self.Save:
+                    exit()
+
+            # for a squence, but not enough for x scans, which means the end of a sequence
+            # run the step of thw whole subsequence anyway
+            # just a copy of code above 
+            elif label_file == label_path[len(label_path)-1]:
+                label_save = np.zeros((lidar_xyz_unified.shape[0]-1,20),dtype=bool)
+                label_class = np.expand_dims(np.zeros(lidar_xyz_unified.shape[0]-1,dtype=np.int8),axis=1)
+                self.tic = time.time()
+                lidar_xyz_unified = lidar_xyz_unified[1:,:]     # get all points in one axis
+                label_unified = label_unified[1:,:]
+
+                # For visualization, save Origin points
+                if self.Save:
+                    lidar_xyz_unified.tofile(str(lidar_xyz_unified.shape[0])+'_Origin.bin')
+                y_max = np.max(lidar_xyz_unified[:,1])
+                y_min = np.min(lidar_xyz_unified[:,1])
+                x_max = np.max(lidar_xyz_unified[:,0])
+                x_min = np.min(lidar_xyz_unified[:,0])
+                flag_points_less_than_OOM = True
+                cnt_OOM = 0
+                lidar_xyz_unified_copy = lidar_xyz_unified
+                while flag_points_less_than_OOM:
+                    lidar_xyz_unified = lidar_xyz_unified_copy.copy()
+
+                    # run RANSAC for each block
+                    for i in range(int(np.round(x_min/l_grid)),int(np.round(x_max/l_grid))):
+                        for j in range(int(np.round(y_min/l_grid)),int(np.round(y_max/l_grid))):
+                            grid_x_min = i*l_grid
+                            grid_x_max = (i+1)*l_grid
+                            grid_y_min = j*l_grid
+                            grid_y_max = (j+1)*l_grid
+                            indice = np.logical_and(np.logical_and(lidar_xyz_unified[:,1]>grid_y_min ,lidar_xyz_unified[:,1]<grid_y_max),np.logical_and(lidar_xyz_unified[:,0]>grid_x_min ,lidar_xyz_unified[:,0]<grid_x_max ) ) 
+                            if np.where(indice==True)[0].shape[0] >= 3:
+                                lidar_xyz_unified[indice],label_save[indice],label_class[indice] = self.RANSAC(lidar_xyz_unified=lidar_xyz_unified[indice],label_save=label_save[indice],label_class=label_class[indice],label_unified=label_unified[indice],dist=self.dist,iter_max=iter_max,percent=percent)
+                    
+                    # avoid OOM
+                    if len(np.unique(np.where(lidar_xyz_unified!=np.array([0,0,0])[0]))) < self.OOM_bar:
+                        flag_points_less_than_OOM = False
+                    else:
+                        cnt_OOM += 1
+                        if cnt_OOM >= 5:
+                            cnt_OOM = 0
+                            self.dist += 0.5 
+                        print('points shape is (',len(np.unique(np.where(lidar_xyz_unified!=np.array([0,0,0])[0]))),', 3), May cause OOM',flush=True)
+                
+                cnt = 0
+                self.cluster(lidar_xyz_unified=lidar_xyz_unified,labels=label_unified,label_save=label_save,label_class=label_class,file_list=file_list,file_len_list=file_len_list,d=d,seq=seq)
+                
+                # if only save points, don't need to process next subsequence 
+                if self.Save:
+                    exit()
+
 
     def RANSAC(self,lidar_xyz_unified,label_save,dist,label_class,label_unified,iter_max,percent):
         iter = 0
@@ -155,7 +240,8 @@ class LESS():
             b =  (p2[2]-p1[2])*(p3[0]-p1[0])-(p2[0]-p1[0])*(p3[2]-p1[2]) 
             c =  (p2[0]-p1[0])*(p3[1]-p1[1])-(p2[1]-p1[1])*(p3[0]-p1[0]) 
             d =  0-(a*p1[0]+b*p1[1]+c*p1[2]) 
-
+            if a*a+b*b+c*c == 0:
+                continue
             # get distance of each point to the flat
             distance = abs(lidar_xyz_unified[:,0]*a + lidar_xyz_unified[:,1]*b + lidar_xyz_unified[:,2]*c + d) / np.sqrt(a*a+b*b+c*c)
             
@@ -211,10 +297,11 @@ class LESS():
         # noting, scribbles, propogated, weak
         #   0         1          2         3 
         points_index = np.where(lidar_xyz_unified!=np.array([0,0,0]))
-        points = lidar_xyz_unified[points_index].reshape((-1,3)).astype(np.float32)
+        points = lidar_xyz_unified[np.unique(points_index[0]),:].astype(np.float32)
         points_index = np.expand_dims(np.unique(points_index[0]),axis=1)
         # get N*N distance, N represents the number of remained points
         # if t=10, cannot pass here
+        print('points shape is',points.shape,flush=True)
         distances = cdist(points, points)  # Assuming 'points' is N*3 array
         # get thresholds
         sensor_centers = np.array([0,0,0])
@@ -227,7 +314,11 @@ class LESS():
         adjacency_sparse = csr_matrix(adjacency_matrix)
         # Compute the connected components using the sparse matrix
         n_components, groups = connected_components(adjacency_sparse)
-        # 
+        
+        # save results
+        if self.Save:
+            points.tofile(str(points.shape[0])+'_withoutground.bin')
+            groups.tofile(str(points.shape[0])+'_groups.bin')
         for i in range(n_components):
             # get each label of points in the group i
             index_in_origin_point_cloud = points_index[np.where(groups==i)]
@@ -257,35 +348,27 @@ class LESS():
             label_save[index_in_origin_point_cloud,:] = label_add
         # Scribble Labels should be 1
         label_class[np.where(labels!=0)] = 1
-        # label_class = np.concatenate((label_class,label_save),axis=1)
         # Save the label in LESS
-        # the array should be N*21, the 21 represent 1+20, which 1 is the group, and the 20 is (one) hot encode
         label_class_dir = os.path.join(self.config['root_dir'], seq, self.target_directory,'group')
         labels_dir = os.path.join(self.config['root_dir'], seq, self.target_directory,'labels')
-        # label_class_dir = os.path.join('./data', seq, self.target_directory,'group')
-        # labels_dir = os.path.join('./data', seq, self.target_directory,'labels')
-        # label_class_dir = os.path.join('./data', seq, self.target_directory,'group')
-        # labels_dir = os.path.join(self.config['root_dir'], seq, self.target_directory)
-        # labels_dir = os.path.join('./data', seq, self.target_dir#ectory)
 
         # save group array, size N*1, value can be 0,1,2,3, which represents the nothing, scribbles, propogated and weak.
         # save the label array, size N*20, value is one hot encoded
         file_len_old = 0
 
-        # the length of slice may be somthing wrong. Check it again.
-        for file_len,file_name in zip(file_len_list,file_list):
-            label_class_file = os.path.join(label_class_dir,file_name)
-            labels_file = os.path.join(labels_dir,file_name)
-            label_class[file_len_old:file_len].tofile(label_class_file)
-            label_save[file_len_old:file_len,:].tofile(labels_file)
-            file_len_old = file_len
-            self.scans_cnt += 1
-            toc = time.time()
-            take_time = toc - self.tic
-            print('processing seq:',seq,',complete',self.scans_cnt,'/',self.seq_len,',RANSAC+cluster takes',take_time,'s',flush=True)
+        if not self.Save:
+            for file_len,file_name in zip(file_len_list,file_list):
+                label_class_file = os.path.join(label_class_dir,file_name)
+                labels_file = os.path.join(labels_dir,file_name)
+                label_class[file_len_old:file_len].tofile(label_class_file)
+                label_save[file_len_old:file_len,:].tofile(labels_file)
+                file_len_old = file_len
+                self.scans_cnt += 1
+                toc = time.time()
+                take_time = toc - self.tic
+                print('processing seq:',seq,',complete',self.scans_cnt,'/',self.seq_len,',RANSAC+cluster takes',take_time,'s',flush=True)
 
 if __name__ == '__main__':
-    # result = np.array([[1, 2, 3], [4, 5], [6, 7, 8, 9]])
     config_path = 'config/LESS.yaml'
     dataset_config_path = 'config/dataset/semantickitti.yaml'
 

@@ -72,9 +72,9 @@ class LightningTrainer(pl.LightningModule):
         loss_LESS = self.less_loss(student_output,student_label,LESS_labels,label_group)
         loss = cl_loss + ls_loss + loss_LESS
 
-        self.log('cl_loss', loss, on_epoch=True, prog_bar=True)
-        self.log('ls_loss', loss, on_epoch=True, prog_bar=True)
-        # self.log('LESS_loss',)
+        self.log('cl_loss', cl_loss, on_epoch=True, prog_bar=True)
+        self.log('ls_loss', ls_loss, on_epoch=True, prog_bar=True)
+        self.log('LESS_loss',loss_LESS,on_epoch=True, prog_bar=True)
         self.log('train_loss', loss, on_epoch=True, prog_bar=True)
         return loss
 

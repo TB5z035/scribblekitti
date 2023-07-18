@@ -60,10 +60,12 @@ logger:
 #                 τ (u, v) = max(ru, rv) × d
 LESS:
   RANSAC:
-    scans_per_subsequence: 5
-    l_grid: 5
-    iter_max: 100
+    scans_per_subsequence: 3
+    l_grid: 3
+    iter_max: 1000
     percent: 0.8
-    dist: 3
+    dist: 1
+    OOM_bar: 40000    # N points => N^2 float32 in cdist
   cluster:
     d: 0.1
+  target_directory: 'LESS_230716'
