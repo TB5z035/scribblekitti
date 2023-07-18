@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 
 class TwinsLoss(nn.Module):
@@ -8,10 +9,11 @@ class TwinsLoss(nn.Module):
         super().__init__()
 
     def _assert_feat(self, feature_a, feature_b):
-        batch_size_a, feature_size_a = feature_a.shape
-        batch_size_b, feature_size_b = feature_b.shape
+        feature_size_a, batch_size_a = feature_a.shape
+        feature_size_b, batch_size_b = feature_b.shape
         assert batch_size_a == batch_size_b, f"Batch size {batch_size_a} is not equal to {batch_size_b}"
         assert feature_size_a == feature_size_b, f"Feature size {feature_size_a} is not equal to {feature_size_b}"
+        # feature_size = min(feature_size_a, feature_size_b)
         return batch_size_a, feature_size_a
 
     def forward(self, feature_a, feature_b):
@@ -33,10 +35,11 @@ class BarlowTwinsLoss(TwinsLoss):
         self.bn = torch.nn.BatchNorm1d(num_features, affine=False)
 
     def forward(self, feature_a, feature_b):
+        # feature [B, d]
         # feature_a / feature_b -> (batch_size, feature_size)
         batch_size, feature_size = self._assert_feat(feature_a, feature_b)
 
-        cross_correlation = self.bn(feature_a).T @ self.bn(feature_b)
+        cross_correlation = self.bn(feature_a).T @ self.bn(feature_b) # [d, d]
         cross_correlation.div_(batch_size)
         torch.distributed.all_reduce(cross_correlation)
 
@@ -71,6 +74,46 @@ class MECTwinsLoss(TwinsLoss):
                 sum_p += power / i
             else:
                 sum_p -= power / i
-        loss = -self.mu * torch.trace(sum_p)
+        loss = - self.mu * torch.trace(sum_p)
         
+        return loss
+
+class VICReg(TwinsLoss):
+    def __init__(self, num_features=128, sim_coeff=25.0, std_coeff=25.0, cov_coeff=1.0, **_) -> None:
+        super().__init__()
+        self.bn = torch.nn.BatchNorm1d(num_features, affine=False)
+        self.num_features = num_features
+        self.sim_coeff = sim_coeff
+        self.std_coeff = std_coeff
+        self.cov_coeff = cov_coeff
+
+    def forward(self, feature_a, feature_b):
+        batch_size, feature_size = self._assert_feat(feature_a, feature_b)
+        
+        # invariance: same point, two transforms
+        
+        repr_loss = F.mse_loss(feature_a, feature_b)
+
+        feature_a = feature_a - feature_a.mean(dim=0)
+        feature_b = feature_b - feature_b.mean(dim=0)
+        
+        # variance: within batch
+
+        std_a = torch.sqrt(feature_a.var(dim=0) + 0.0001)
+        std_b = torch.sqrt(feature_b.var(dim=0) + 0.0001)
+        std_loss = torch.mean(F.relu(1 - std_a)) / 2 + torch.mean(F.relu(1 - std_b)) / 2
+        
+        # covariance: within batch
+
+        cov_a = (feature_a.T @ feature_a) / (feature_size - 1)
+        cov_b = (feature_b.T @ feature_b) / (feature_size - 1)
+        cov_loss = off_diagonal(cov_a).pow_(2).sum().div(
+            self.num_features
+        ) + off_diagonal(cov_b).pow_(2).sum().div(self.num_features)
+
+        loss = (
+            self.sim_coeff * repr_loss
+            + self.std_coeff * std_loss
+            + self.cov_coeff * cov_loss
+        )
         return loss

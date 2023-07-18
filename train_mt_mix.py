@@ -173,7 +173,7 @@ def init(base_dir):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--config_path', default='config/training.yaml')
-    parser.add_argument('--dataset_config_path', default='config/semantickitti.yaml')
+    parser.add_argument('--dataset_config_path', default='config/dataset/semantickitti.yaml')
     args = parser.parse_args()
 
     with open(args.config_path, 'r') as f:

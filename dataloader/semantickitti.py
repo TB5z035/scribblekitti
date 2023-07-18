@@ -141,11 +141,12 @@ class Cylindrical(Baseline, prefix='cylindrical'):
         xyzr = self.get_lidar(idx)
         label = self.get_label(idx)
         return self.get_cylindrical_scene(xyzr, label, self.config.get('aug', None))
+        # return (self.get_cylindrical_scene(xyzr, label, self.config.get('aug', None)), self.get_cylindrical_scene(xyzr, label, self.config.get('aug', None)))
 
     @staticmethod
     def _collate_fn(batch):
-        xyzrs, feas, labels = zip(*batch)
-        return xyzrs, feas, labels
+        batch1, batch2 = zip(*batch)
+        return batch1, batch2
 
     @staticmethod
     def cart2cyl(xyz):
@@ -156,6 +157,8 @@ class Cylindrical(Baseline, prefix='cylindrical'):
     def get_cylindrical_scene(self, xyzr, label, aug_methods):
         xyz, intensity = xyzr[:, :3], xyzr[:, 3]
         if self.split == 'train':
+            # import IPython
+            # IPython.embed()
             xyz = self.augment(xyz, aug_methods)
 
         rpz = self.cart2cyl(xyz)

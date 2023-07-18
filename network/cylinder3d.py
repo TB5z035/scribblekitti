@@ -61,14 +61,15 @@ class FeatureGenerator(nn.Module):
             unique_coords = torch_scatter.scatter_max(coords, reverse_indices, dim=0)[0]
         else:
         # Unique coordinates
-            coords = coords[shuffle, :]
+            # coords = coords[shuffle, :]
             unique_coords, unique_inv = torch.unique(coords, return_inverse=True, dim=0)
 
         # Generate features
         feats = self.net(feats)
-        feats = torch_scatter.scatter_max(feats, unique_inv, dim=0)[0]
+        # feats = torch_scatter.scatter_max(feats, unique_inv, dim=0)[0]
         feats = self.compress(feats)
-        return feats, unique_coords.type(torch.int64)
+        return feats, coords
+        # return feats, unique_coords.type(torch.int64)
 
 class AsymmetricUNet(nn.Module):
     def __init__(self,

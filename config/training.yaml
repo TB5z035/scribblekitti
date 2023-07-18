@@ -3,7 +3,7 @@ model:
   hid_feat: 32
 
 dataset:
-  root_dir: 'data/sequences'
+  root_dir: '/data22/tb5zhh/datasets/SemanticKITTI/sequences'
   prefix: pls_cylindrical_mt
   spatial_shape: [480,360,32]
   max_bound: [50,3.1415926,2]

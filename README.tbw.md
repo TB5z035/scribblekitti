@@ -31,7 +31,7 @@ python pretrain.py --config_path config/pretrain/bt_pls.yaml --dataset_config_pa
 ### Train
 
 ```shell
-python train.py --config_path config/pretrain/bt_pls.yaml --dataset_config_path config/pretrain/semantickitti.yaml
+python train.py --config_path config/pretrain/bt_pls.yaml --dataset_config_path config/dataset/semantickitti.yaml
 ```
 * `?`: plain Cylinder3D tuning
 * `?`: Barlow Twins pretrained Cylinder3D tuning
