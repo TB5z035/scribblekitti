@@ -35,21 +35,21 @@ class LightningTrainer(pl.LightningModule):
         super().__init__()
         self.config = config
         self._load_dataset_info()
-        self.network = Cylinder3DProject(nclasses=self.nclasses, downsample=False, **config['model'])
+        self.network = Cylinder3DProject(nclasses=self.nclasses, **config['model'])
 
         loss_type = self.config['pretrain_loss']['type']
         self.loss = PRETRAIN_LOSS[loss_type](self.network.feature_size, **self.config['pretrain_loss'])
 
         self.save_hyperparameters('config')
 
-    def forward(self, model, fea, pos):
-        _, features = model(fea, pos, len(fea))
+    def forward(self, model, fea, pos, unique_inv):
+        _, features = model(fea, pos, len(fea), unique_inv)
         return features
 
     def training_step(self, batch, batch_idx):
-        (rpz_a, fea_a, label_), (rpz_b, fea_b, label_b) = batch
-        output_a = self(self.network, fea_a, rpz_a)
-        output_b = self(self.network, fea_b, rpz_b)
+        (rpz_a, fea_a, label_), (rpz_b, fea_b, label_b), unique_inv = batch
+        output_a = self(self.network, fea_a, rpz_a, unique_inv)
+        output_b = self(self.network, fea_b, rpz_b, unique_inv)
         loss = self.loss(output_a, output_b)
 
         self.log('pretrain_loss', loss, prog_bar=True)
@@ -66,7 +66,7 @@ class LightningTrainer(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         if self.global_rank == 0:
             rpz, fea, _ = batch
-            output = self(self.network, fea, rpz)
+            output = self(self.network, fea, rpz, None)
             return output.cpu()[::100]
         else:
             return None

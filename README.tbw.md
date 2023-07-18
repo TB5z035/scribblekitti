@@ -7,7 +7,7 @@ conda install pytorch==1.10.1 torchvision==0.11.2 cudatoolkit=11.3 -c pytorch -c
 pip install torch-scatter -f https://data.pyg.org/whl/torch-1.10.1+cu113.html
 pip install -r requirements.txt
 
-# Download spconv v1.2.1 with two bugs fixed 
+# Download spconv v1.2.1 with two bugs fixed
 wget https://cloud.tsinghua.edu.cn/f/f1a0860337224c7f8585/?dl=1 -O spconv.tar.gz && tar xzvf spconv.tar.gz
 cd spconv
 sudo apt-get install libboost-all-dev

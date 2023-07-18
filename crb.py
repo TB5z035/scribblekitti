@@ -100,7 +100,7 @@ if __name__=='__main__':
 
         # Save pseudo-labels
         true_label = learning_map_inv[scribbles].astype(np.uint32)
-        crb_path = pathlib.Path(label_path.replace('scribbles', 'crb'))
+        crb_path = pathlib.Path(label_path.replace('scribbles', args.pseudo_name))
         crb_path.parents[0].mkdir(parents=True, exist_ok=True)
         true_label.tofile(crb_path)
     hf.close()

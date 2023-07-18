@@ -274,6 +274,26 @@ class CylindricalTwin(Cylindrical, prefix='cylindrical_twin'):
 class PLSCylindricalTwin(CylindricalTwin, PLSCylindrical, prefix='pls_cylindrical_twin'):
     pass
 
+class CylindricalTwinWithQuantize(CylindricalTwin, prefix='cylindrical_twin_with_quantize'):
+    @staticmethod
+    def _collate_fn(batch):
+        list_branch_1, list_branch_2 = zip(*batch)
+        stu_xyzrs, stu_feas, stu_labels = zip(*list_branch_1)
+        tea_xyzrs, tea_feas, tea_labels = zip(*list_branch_2)
+        ret = [
+            (tea_xyzrs, tea_feas, tea_labels),
+            (stu_xyzrs, stu_feas, stu_labels)
+        ]
+        coords = ret[0][0]
+        unique_invs = [torch.unique(coord, return_inverse=True, dim=0)[1] for coord in coords]
+        count = 0
+        for i in range(len(unique_invs)):
+            unique_invs[i] += count
+            count += len(unique_invs[i])
+        unique_invs = torch.cat(unique_invs)
+        ret.append(unique_invs)
+        return ret 
+
 class PLSCylindricalTwinSample(PLSCylindricalTwin, prefix='pls_cylindrical_twin_sample'):
     def __init__(self, split, config, nclasses=20):
         super().__init__(split, config, nclasses)

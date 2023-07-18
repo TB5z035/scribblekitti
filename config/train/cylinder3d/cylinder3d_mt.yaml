@@ -26,7 +26,8 @@ val_dataset:
 train_dataloader:
   batch_size: 2
   shuffle: True
-  num_workers: 4
+  num_workers: 8
+  drop_last: True
 
 val_dataloader:
   batch_size: 2

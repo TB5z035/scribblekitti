@@ -1,26 +1,26 @@
 model:
-  in_feat: 66
+  in_feat: 9
   hid_feat: 32
-
-pretrain_loss: 
-  type: mec
 
 dataset:
   root_dir: 'data/sequences'
-  prefix: pls_cylindrical_twin
+  prefix: cylindrical_mt
+  label_directory: 'crb_cylinder3d_mt_pls'
   spatial_shape: [480,360,32]
   max_bound: [50,3.1415926,2]
   min_bound: [0,-3.1415926,-4]
-  aug: ['rotate', 'flip', 'noise']
+  aug:
+    student: ['rotate', 'flip', 'scale', 'noise']
+    teacher: ['rotate', 'flip']
   bin_size: [[24,9],[48,18],[96,36]]
 
 val_dataset:
   root_dir: 'data/sequences'
-  prefix: pls_cylindrical_sample
+  prefix: cylindrical_mt
+  label_directory: labels
   spatial_shape: [480,360,32]
   max_bound: [50,3.1415926,2]
   min_bound: [0,-3.1415926,-4]
-  aug: []
   bin_size: [[24,9],[48,18],[96,36]]
 
 train_dataloader:
@@ -29,9 +29,9 @@ train_dataloader:
   num_workers: 8
 
 val_dataloader:
-  batch_size: 1
+  batch_size: 2
   shuffle: False
-  num_workers: 4
+  num_workers: 8
 
 trainer:
   max_epochs: 75
@@ -40,12 +40,12 @@ trainer:
   default_root_dir: 'output'
   accelerator: 'ddp'
   sync_batchnorm: True
-  accumulate_grad_batches: 2
-  num_sanity_val_steps: 10
+  accumulate_grad_batches: 1
+  num_sanity_val_steps: 1
 
 optimizer:
-  lr: 0.1
+  lr: 0.001
 
 logger:
   project: 'scribblekitti_tbw'
-  name: placeholder # `name` has no effect
+  name: 'placeholder'

@@ -1,5 +1,5 @@
 model:
-  in_feat: 66
+  in_feat: 9
   hid_feat: 32
 
 pretrain_loss: 
@@ -7,7 +7,7 @@ pretrain_loss:
 
 dataset:
   root_dir: 'data/sequences'
-  prefix: pls_cylindrical_twin
+  prefix: cylindrical_twin_with_quantize
   spatial_shape: [480,360,32]
   max_bound: [50,3.1415926,2]
   min_bound: [0,-3.1415926,-4]
@@ -16,7 +16,7 @@ dataset:
 
 val_dataset:
   root_dir: 'data/sequences'
-  prefix: pls_cylindrical_sample
+  prefix: cylindrical_sample
   spatial_shape: [480,360,32]
   max_bound: [50,3.1415926,2]
   min_bound: [0,-3.1415926,-4]

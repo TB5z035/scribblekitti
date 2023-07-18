@@ -60,7 +60,7 @@ class MECTwinsLoss(TwinsLoss):
         batch_size, feature_size = self._assert_feat(feature_a, feature_b)
         self.lamb = 1 / 0.06 / batch_size
         self.mu = (batch_size + feature_size) / 2
-        cross_correlation = self.lamb * torch.mm(self.bn(feature_a).t(), self.bn(feature_b))
+        cross_correlation = self.lamb * torch.mm(self.bn(feature_a).t(), self.bn(feature_b)) / batch_size
 
         sum_p = torch.zeros_like(cross_correlation)
         power = torch.clone(cross_correlation)
