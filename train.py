@@ -9,7 +9,7 @@ import pytorch_lightning as pl
 import torch
 import torch.nn as nn
 import yaml
-from dataloader.semantickitti import SemanticKITTI
+from dataloader.semantickitti import SemanticKITTI, Baseline
 from network.cylinder3d import Cylinder3D
 from pytorch_lightning import Trainer
 from pytorch_lightning.loggers import TensorBoardLogger, WandbLogger
@@ -27,7 +27,8 @@ class LightningTrainer(pl.LightningModule):
         super().__init__()
         self.config = config
         self._load_dataset_info()
-        self.student = Cylinder3D(nclasses=self.nclasses, **config['model'])
+        # self.student = Cylinder3D(nclasses=self.nclasses, **config['model'])
+        self.network = Cylinder3DProject(nclasses=self.nclasses, downsample=False, **config['model'])
         if 'load_checkpoint' in self.config['trainer']:
             ckpt_path = self.config['trainer']['load_checkpoint']
             state_dict = torch.load(ckpt_path)
@@ -50,7 +51,7 @@ class LightningTrainer(pl.LightningModule):
         return torch.cat(outputs, dim=1).T # (\sigma Bi*Ni, C)
 
     def training_step(self, batch, batch_idx):
-        student_rpz, student_fea, student_label = batch
+        student_rpz, student_fea, student_label = batch['student']
         batch_size = len(student_rpz)
         student_label = torch.cat(student_label, dim=0)
 
@@ -61,7 +62,7 @@ class LightningTrainer(pl.LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx):
-        student_rpz, student_fea, student_label = batch
+        student_rpz, student_fea, student_label = batch['student']
         batch_size = len(student_rpz)
 
         student_label = torch.cat(student_label, dim=0)
@@ -85,15 +86,15 @@ class LightningTrainer(pl.LightningModule):
             self.best_miou = student_miou
             self.best_iou = np.nan_to_num(student_iou) * 100
         self.log('val_best_miou', self.best_miou, on_epoch=True, prog_bar=True)
-        # self.log('val_best_iou', self.best_iou, on_epoch=True, prog_bar=False)
+        self.log('val_best_iou', self.best_iou, on_epoch=True, prog_bar=False)
 
     def configure_optimizers(self):
         optimizer = Adam(self.student.parameters(), **self.config['optimizer'])
         return [optimizer]
 
     def setup(self, stage):
-        self.train_dataset = SemanticKITTI(split='train', config=self.config['dataset'])
-        self.val_dataset = SemanticKITTI(split='valid', config=self.config['val_dataset'])
+        self.train_dataset = Baseline(split='train', config=self.config['dataset'])
+        self.val_dataset = Baseline(split='valid', config=self.config['dataset'])
 
     def train_dataloader(self):
         return DataLoader(dataset=self.train_dataset, collate_fn=self.train_dataset._collate_fn, **self.config['train_dataloader'])
@@ -130,7 +131,7 @@ def init(base_dir):
 if __name__=='__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--config_path', default='config/training.yaml')
-    parser.add_argument('--dataset_config_path', default='config/semantickitti.yaml')
+    parser.add_argument('--dataset_config_path', default='config/dataset/semantickitti.yaml')
     args = parser.parse_args()
 
     with open(args.config_path, 'r') as f:
@@ -138,7 +139,7 @@ if __name__=='__main__':
     with open(args.dataset_config_path, 'r') as f:
         config['dataset'].update(yaml.safe_load(f))
     with open(args.dataset_config_path, 'r') as f:
-        config['val_dataset'].update(yaml.safe_load(f))
+        config['dataset'].update(yaml.safe_load(f))
 
     config['logger']['name'] = args.config_path.split('/')[-1][:-5]
 

@@ -141,12 +141,13 @@ class Cylindrical(Baseline, prefix='cylindrical'):
         xyzr = self.get_lidar(idx)
         label = self.get_label(idx)
         return self.get_cylindrical_scene(xyzr, label, self.config.get('aug', None))
+        # return (self.get_cylindrical_scene(xyzr, label, self.config.get('aug', None)), self.get_cylindrical_scene(xyzr, label, self.config.get('aug', None)))
 
     @staticmethod
     def _collate_fn(batch):
         xyzrs, feas, labels = zip(*batch)
         return xyzrs, feas, labels
-
+    
     @staticmethod
     def cart2cyl(xyz):
         rho = np.sqrt(xyz[:, 0]**2 + xyz[:, 1]**2)

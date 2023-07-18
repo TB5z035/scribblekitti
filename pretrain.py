@@ -17,16 +17,17 @@ from torch.optim import Adam
 from torch.utils.data import DataLoader
 
 import wandb
-from dataloader.semantickitti import SemanticKITTI
-from network.cylinder3d import Cylinder3DProject
-from utils.barlow_twins_loss import BarlowTwinsLoss, MECTwinsLoss
+from dataloader.semantickitti import SemanticKITTI, Baseline
+from network.cylinder3d import Cylinder3DProject, Cylinder3D
+from utils.barlow_twins_loss import BarlowTwinsLoss, MECTwinsLoss, VICReg
 
 patch_sklearn()
 from sklearn.manifold import TSNE
 
 PRETRAIN_LOSS = {
     'barlow_twins': BarlowTwinsLoss,
-    'mec': MECTwinsLoss
+    'mec': MECTwinsLoss,
+    'vicreg': VICReg
 }
 
 class LightningTrainer(pl.LightningModule):
@@ -36,7 +37,8 @@ class LightningTrainer(pl.LightningModule):
         self.config = config
         self._load_dataset_info()
         self.network = Cylinder3DProject(nclasses=self.nclasses, downsample=False, **config['model'])
-
+        # self.network = Cylinder3D(nclasses=self.nclasses, downsample=False, **config['model'])
+        
         loss_type = self.config['pretrain_loss']['type']
         self.loss = PRETRAIN_LOSS[loss_type](self.network.feature_size, **self.config['pretrain_loss'])
 
@@ -47,9 +49,12 @@ class LightningTrainer(pl.LightningModule):
         return features
 
     def training_step(self, batch, batch_idx):
-        (rpz_a, fea_a, label_), (rpz_b, fea_b, label_b) = batch
+        # (rpz_a, fea_a, label_a) = batch[0]
+        # (rpz_b, fea_b, label_b) = batch[1]
+        (rpz_a, fea_a, label_a), (rpz_b, fea_b, label_b) = batch
         output_a = self(self.network, fea_a, rpz_a)
         output_b = self(self.network, fea_b, rpz_b)
+
         loss = self.loss(output_a, output_b)
 
         self.log('pretrain_loss', loss, prog_bar=True)
@@ -65,6 +70,7 @@ class LightningTrainer(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         if self.global_rank == 0:
+            # rpz, fea, _ = batch[0][0]
             rpz, fea, _ = batch
             output = self(self.network, fea, rpz)
             return output.cpu()[::100]
@@ -115,7 +121,7 @@ class LightningTrainer(pl.LightningModule):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--config_path', default='config/training.yaml')
-    parser.add_argument('--dataset_config_path', default='config/semantickitti.yaml')
+    parser.add_argument('--dataset_config_path', default='config/dataset/semantickitti.yaml')
     args = parser.parse_args()
 
     with open(args.config_path, 'r') as f:
@@ -136,5 +142,5 @@ if __name__ == '__main__':
     config['base_dir'] = base_dir
 
     wandb_logger = WandbLogger(config=config, save_dir=config['trainer']['default_root_dir'], **config['logger'])
-    model = LightningTrainer(config)
+    model = LightningTrainer(config=config)
     Trainer(logger=wandb_logger, callbacks=model.get_model_callback(), **config['trainer']).fit(model)
