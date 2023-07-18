@@ -14,7 +14,11 @@ class TwinsLoss(nn.Module):
         assert batch_size_a == batch_size_b, f"Batch size {batch_size_a} is not equal to {batch_size_b}"
         assert feature_size_a == feature_size_b, f"Feature size {feature_size_a} is not equal to {feature_size_b}"
         # feature_size = min(feature_size_a, feature_size_b)
+<<<<<<< HEAD
         return batch_size_a, feature_size_a
+=======
+        return batch_size_a, feature_size
+>>>>>>> 84e79ae47ce894e0ce509de8960cc9cb3329642c
 
     def forward(self, feature_a, feature_b):
         raise NotImplementedError
