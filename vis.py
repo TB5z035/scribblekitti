@@ -147,7 +147,11 @@ if __name__ == '__main__':
     config = yaml.safe_load(open('config/unc_filter.yaml', 'r'))
     config['dataset'].update(yaml.safe_load(open('config/dataset/semantickitti.yaml', 'r')))
     ds = SemanticKITTI(split='train', config=config['dataset'])
-    
+    point_cloud = []
+
+    for i in range(20):
+        point_cloud.append([])
+
     for i in tqdm(range(len(ds))):
         if i < 10000:
             continue
@@ -158,6 +162,9 @@ if __name__ == '__main__':
         predicted_labels = hf[os.path.join(label_path, 'label')][()]
         uncertainty_scores = hf[os.path.join(label_path, 'unc')][()]
         uncertainty_scores = np.sum(uncertainty_scores, axis=1)
+
+        for j in range(len(xyzr)):
+            point_cloud[predicted_labels[j]].append(uncertainty_scores[j])
         
         print(np.max(uncertainty_scores), np.min(uncertainty_scores))
         vis_label(xyzr, predicted_labels, f"tmp/label{i}.txt")
@@ -176,6 +183,13 @@ if __name__ == '__main__':
         
         if i == 10010:
             break
-       
+        
+    for i in range(20):
+        plt.figure()
+        plt.hist(point_cloud[i], bins=600)
+        plt.title("data analyze")
+        plt.xlabel("height")
+        plt.ylabel("rate")
+        plt.savefig(f"labels/unc_hist{i}.png")
 
 # %%

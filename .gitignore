@@ -2,6 +2,7 @@ data/
 output/
 tmp_save/
 wandb/
+labels/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
