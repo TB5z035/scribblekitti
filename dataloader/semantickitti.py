@@ -140,18 +140,14 @@ class Cylindrical(Baseline, prefix='cylindrical'):
     def __getitem__(self, idx):
         xyzr = self.get_lidar(idx)
         label = self.get_label(idx)
-<<<<<<< HEAD
         return self.get_cylindrical_scene(xyzr, label, self.config.get('aug', None))
         # return (self.get_cylindrical_scene(xyzr, label, self.config.get('aug', None)), self.get_cylindrical_scene(xyzr, label, self.config.get('aug', None)))
-=======
-        return (self.get_cylindrical_scene(xyzr, label, self.config.get('aug', None)), self.get_cylindrical_scene(xyzr, label, self.config.get('aug', None)))
->>>>>>> 84e79ae47ce894e0ce509de8960cc9cb3329642c
 
     @staticmethod
     def _collate_fn(batch):
-        batch1, batch2 = zip(*batch)
-        return batch1, batch2
-
+        xyzrs, feas, labels = zip(*batch)
+        return xyzrs, feas, labels
+    
     @staticmethod
     def cart2cyl(xyz):
         rho = np.sqrt(xyz[:, 0]**2 + xyz[:, 1]**2)
@@ -161,13 +157,6 @@ class Cylindrical(Baseline, prefix='cylindrical'):
     def get_cylindrical_scene(self, xyzr, label, aug_methods):
         xyz, intensity = xyzr[:, :3], xyzr[:, 3]
         if self.split == 'train':
-<<<<<<< HEAD
-            # import IPython
-            # IPython.embed()
-=======
-            import IPython
-            IPython.embed()
->>>>>>> 84e79ae47ce894e0ce509de8960cc9cb3329642c
             xyz = self.augment(xyz, aug_methods)
 
         rpz = self.cart2cyl(xyz)

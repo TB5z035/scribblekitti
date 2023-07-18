@@ -62,16 +62,12 @@ class FeatureGenerator(nn.Module):
         else:
         # Unique coordinates
             # coords = coords[shuffle, :]
-            unique_coords, unique_inv = torch.unique(coords, return_inverse=True, dim=0)
+            pass
+            # unique_coords, unique_inv = torch.unique(coords, return_inverse=True, dim=0)
 
         # Generate features
-<<<<<<< HEAD
         feats = self.net(feats)
         # feats = torch_scatter.scatter_max(feats, unique_inv, dim=0)[0]
-=======
-        feats = self.net(feats)[0]
-        feats = torch_scatter.scatter_max(feats, unique_inv, dim=0)[0]
->>>>>>> 84e79ae47ce894e0ce509de8960cc9cb3329642c
         feats = self.compress(feats)
         return feats, coords
         # return feats, unique_coords.type(torch.int64)
