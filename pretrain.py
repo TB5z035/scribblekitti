@@ -39,10 +39,10 @@ class LightningTrainer(pl.LightningModule):
         self._load_dataset_info()
         self.momentum = 0.996
         self.network = Cylinder3DProject(nclasses=self.nclasses, downsample=False, **config['model'])
-        if (self.config['pretrain_loss']['type'] == 'mec'):
-            self.teacher = copy.deepcopy(self.network)
-            for p in self.teacher.parameters():
-                p.requires_grad = False
+        # if (self.config['pretrain_loss']['type'] == 'mec'):
+        #     self.teacher = copy.deepcopy(self.network)
+        #     for p in self.teacher.parameters():
+        #         p.requires_grad = False
         # self.network = Cylinder3D(nclasses=self.nclasses, downsample=False, **config['model'])
         # error when loading state dict
         if 'load_checkpoint' in self.config:
@@ -62,10 +62,10 @@ class LightningTrainer(pl.LightningModule):
         return features
 
     def training_step(self, batch, batch_idx):
-        if (self.config['pretrain_loss']['type'] == 'mec'):
-            with torch.no_grad():
-                for param_q, param_k in zip(self.network.parameters(), self.teacher.parameters()):
-                    param_k.data.mul_(self.momentum).add_((1 - self.momentum) * param_q.detach().data)
+        # if (self.config['pretrain_loss']['type'] == 'mec'):
+        #     with torch.no_grad():
+        #         for param_q, param_k in zip(self.network.parameters(), self.teacher.parameters()):
+        #             param_k.data.mul_(self.momentum).add_((1 - self.momentum) * param_q.detach().data)
                 
         if (self.config['pretrain_loss']['type'] == 'EMP'):
             output = []
@@ -77,14 +77,15 @@ class LightningTrainer(pl.LightningModule):
             output_a = self(self.network, fea_a, rpz_a)
             output_b = self(self.network, fea_b, rpz_b)
             
-            if (self.config['pretrain_loss']['type'] == 'mec'):
-                teacher_a = self(self.teacher, fea_a, rpz_a)
-                teacher_b = self(self.teacher, fea_b, rpz_b)
+            # if (self.config['pretrain_loss']['type'] == 'mec'):
+            #     teacher_a = self(self.teacher, fea_a, rpz_a)
+            #     teacher_b = self(self.teacher, fea_b, rpz_b)
 
-                loss = self.loss(teacher_a, output_b)/2 + self.loss(teacher_b, output_a)/2
+            #     loss = self.loss(teacher_a, output_b)/2 + self.loss(teacher_b, output_a)/2
             
-            else:
-                loss = self.loss(output_a, output_b)
+            # else:
+            
+            loss = self.loss(output_a, output_b)
 
         self.log('pretrain_loss', loss, prog_bar=True)
         if self.global_rank == 0:

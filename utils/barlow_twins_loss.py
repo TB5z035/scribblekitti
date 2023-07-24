@@ -9,10 +9,11 @@ class TwinsLoss(nn.Module):
         super().__init__()
 
     def _assert_feat(self, feature_a, feature_b):
-        feature_size_a, batch_size_a = feature_a.shape
-        feature_size_b, batch_size_b = feature_b.shape
+        batch_size_a, feature_size_a = feature_a.shape
+        batch_size_b, feature_size_b = feature_b.shape
         assert batch_size_a == batch_size_b, f"Batch size {batch_size_a} is not equal to {batch_size_b}"
         assert feature_size_a == feature_size_b, f"Feature size {feature_size_a} is not equal to {feature_size_b}"
+        # feature_size = min(feature_size_a, feature_size_b)
         return batch_size_a, feature_size_a
 
     def forward(self, feature_a, feature_b):
@@ -34,22 +35,72 @@ class BarlowTwinsLoss(TwinsLoss):
         self.bn = torch.nn.BatchNorm1d(num_features, affine=False)
 
     def forward(self, feature_a, feature_b):
+        # feature [B, d]
         # feature_a / feature_b -> (batch_size, feature_size)
         batch_size, feature_size = self._assert_feat(feature_a, feature_b)
-        cross_correlation = self.bn(feature_a).T @ self.bn(feature_b)
-        cross_correlation.div_(batch_size)
-        
-        try:
-            torch.distributed.all_reduce(cross_correlation) / torch.distributed.get_world_size()
-        except:
-            pass
-        
-        on_diag = torch.diagonal(cross_correlation).add_(-1).pow_(2).sum()
-        off_diag = off_diagonal(cross_correlation).pow_(2).sum()
+        feature_a = self.bn(feature_a)
+        feature_b = self.bn(feature_b)
+
+        cross_correlation = feature_a.T @ feature_b # [d, d]
+        torch.distributed.all_reduce(cross_correlation) 
+        cross_correlation.div_(torch.distributed.get_world_size())
+        down = (feature_a.pow(2).sum(dim=0, keepdim=True).sqrt().T) @ (feature_b.pow(2).sum(dim=0, keepdim=True).sqrt())
+        cross_correlation.div_(down)
+
+        on_diag = torch.diagonal(cross_correlation).add_(-1).pow_(2).sum().div(feature_size)
+        off_diag = off_diagonal(cross_correlation).pow_(2).sum().div((feature_size - 1) ** 2)
+
         loss = on_diag + self.coef * off_diag
 
         return loss
 
+
+
+class VICReg(TwinsLoss):
+    def __init__(self, num_features=128, sim_coeff=25.0, std_coeff=25.0, cov_coeff=1.0, **_) -> None:
+        super().__init__()
+        self.bn = torch.nn.BatchNorm1d(num_features, affine=False)
+        self.num_features = num_features
+        self.sim_coeff = sim_coeff
+        self.std_coeff = std_coeff
+        self.cov_coeff = cov_coeff
+
+    def forward(self, feature_a, feature_b):
+        batch_size, feature_size = self._assert_feat(feature_a, feature_b)
+        
+        # invariance: same point, two transforms
+        
+        repr_loss = F.mse_loss(feature_a, feature_b)
+
+        feature_a = feature_a - feature_a.mean(dim=0)
+        feature_b = feature_b - feature_b.mean(dim=0)
+        
+        # variance: within batch
+
+        std_a = torch.sqrt(feature_a.var(dim=0) + 0.0001)
+        std_b = torch.sqrt(feature_b.var(dim=0) + 0.0001)
+        std_loss = torch.mean(F.relu(1 - std_a)) / 2 + torch.mean(F.relu(1 - std_b)) / 2
+        
+        # covariance: within batch
+
+        cov_a = (feature_a.T @ feature_a) / (batch_size - 1)
+        down_a = (feature_a.pow(2).sum(dim=0, keepdim=True).sqrt().T) @ (feature_a.pow(2).sum(dim=0, keepdim=True).sqrt())
+        cov_a.div_(down_a)
+        cov_b = (feature_b.T @ feature_b) / (batch_size - 1)
+        down_b = (feature_b.pow(2).sum(dim=0, keepdim=True).sqrt().T) @ (feature_b.pow(2).sum(dim=0, keepdim=True).sqrt())
+        cov_b.div_(down_b)
+        cov_loss = off_diagonal(cov_a).pow_(2).sum().div(
+            (feature_size - 1) **2
+        ) + off_diagonal(cov_b).pow_(2).sum().div((feature_size - 1) **2)
+
+        print(repr_loss, std_loss, cov_loss)
+
+        loss = (
+            self.sim_coeff * repr_loss
+            + self.std_coeff * std_loss
+            + self.cov_coeff * cov_loss
+        )
+        return loss
 
 class MECTwinsLoss(TwinsLoss):
 
@@ -78,40 +129,6 @@ class MECTwinsLoss(TwinsLoss):
         
         loss = - torch.trace(sum_matrix) * self.mu
         
-        return loss
-
-class VICReg(TwinsLoss):
-    def __init__(self, num_features=128, sim_coeff=25.0, std_coeff=25.0, cov_coeff=1.0, **_) -> None:
-        super().__init__()
-        self.num_features = num_features
-        self.sim_coeff = sim_coeff
-        self.std_coeff = std_coeff
-        self.cov_coeff = cov_coeff
-
-    def forward(self, feature_a, feature_b):
-        batch_size, feature_size = self._assert_feat(feature_a, feature_b)
-        # invariance: same point, two transforms
-        repr_loss = F.mse_loss(feature_a, feature_b)
-        feature_a = feature_a - feature_a.mean(dim=0)
-        feature_b = feature_b - feature_b.mean(dim=0)
-        
-        # variance: within batch
-        std_a = torch.sqrt(feature_a.var(dim=0) + 0.0001)
-        std_b = torch.sqrt(feature_b.var(dim=0) + 0.0001)
-        std_loss = torch.mean(F.relu(1 - std_a)) / 2 + torch.mean(F.relu(1 - std_b)) / 2
-        
-        # covariance: within batch
-        cov_a = (feature_a.T @ feature_a) / (feature_size - 1)
-        cov_b = (feature_b.T @ feature_b) / (feature_size - 1)
-        cov_loss = off_diagonal(cov_a).pow_(2).sum().div(
-            self.num_features
-            ) + off_diagonal(cov_b).pow_(2).sum().div(self.num_features)
-
-        loss = (
-            self.sim_coeff * repr_loss
-            + self.std_coeff * std_loss
-            + self.cov_coeff * cov_loss
-        )
         return loss
 
 def chunk_avg(x, n_chunks=2, normalize=False):
