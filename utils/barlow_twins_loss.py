@@ -41,7 +41,11 @@ class BarlowTwinsLoss(TwinsLoss):
 
         cross_correlation = self.bn(feature_a).T @ self.bn(feature_b) # [d, d]
         cross_correlation.div_(batch_size)
-        torch.distributed.all_reduce(cross_correlation)
+        torch.distributed.all_reduce(cross_correlation) 
+        cross_correlation.div_(torch.distributed.get_world_size())
+        down = (feature_a.pow(2).sum(dim=0, keepdim=True).sqrt().T) @ (feature_b.pow(2).sum(dim=0, keepdim=True).sqrt())
+        cross_correlation.div_(down)
+
 
         on_diag = torch.diagonal(cross_correlation).add_(-1).pow_(2).sum()
         off_diag = off_diagonal(cross_correlation).pow_(2).sum()
