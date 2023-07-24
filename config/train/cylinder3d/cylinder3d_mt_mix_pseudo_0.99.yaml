@@ -7,7 +7,7 @@ lasermix:
   pseudo_label_threshold: 0.99
 
 dataset:
-  root_dir: 'data/sequences'
+  root_dir: '/data22/tb5zhh/datasets/SemanticKITTI/sequences'
   prefix: cylindrical_mt
   label_directory: scribbles
   spatial_shape: [480,360,32]
@@ -19,7 +19,7 @@ dataset:
   bin_size: [[24,9],[48,18],[96,36]]
 
 val_dataset:
-  root_dir: 'data/sequences'
+  root_dir: '/data22/tb5zhh/datasets/SemanticKITTI/sequences'
   prefix: cylindrical_mt
   label_directory: labels
   spatial_shape: [480,360,32]
@@ -52,6 +52,8 @@ trainer:
   sync_batchnorm: True
   accumulate_grad_batches: 1
   num_sanity_val_steps: 1
+
+load_checkpoint: output/scribblekitti_tbw/pretrain_bt_pls/20230715-00:54:00/model/61.ckpt
 
 optimizer:
   lr: 0.001

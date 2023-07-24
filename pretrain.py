@@ -19,7 +19,7 @@ from torch.utils.data import DataLoader
 import wandb
 from dataloader.semantickitti import SemanticKITTI, Baseline
 from network.cylinder3d import Cylinder3DProject, Cylinder3D
-from utils.barlow_twins_loss import BarlowTwinsLoss, MECTwinsLoss, VICReg
+from utils.barlow_twins_loss import BarlowTwinsLoss, MECTwinsLoss, VICReg, EMPLoss
 
 patch_sklearn()
 from sklearn.manifold import TSNE
@@ -27,7 +27,8 @@ from sklearn.manifold import TSNE
 PRETRAIN_LOSS = {
     'barlow_twins': BarlowTwinsLoss,
     'mec': MECTwinsLoss,
-    'vicreg': VICReg
+    'vicreg': VICReg,
+    'EMP': EMPLoss
 }
 
 class LightningTrainer(pl.LightningModule):
@@ -36,8 +37,20 @@ class LightningTrainer(pl.LightningModule):
         super().__init__()
         self.config = config
         self._load_dataset_info()
+        self.momentum = 0.996
         self.network = Cylinder3DProject(nclasses=self.nclasses, downsample=False, **config['model'])
+        if (self.config['pretrain_loss']['type'] == 'mec'):
+            self.teacher = copy.deepcopy(self.network)
+            for p in self.teacher.parameters():
+                p.requires_grad = False
         # self.network = Cylinder3D(nclasses=self.nclasses, downsample=False, **config['model'])
+        # error when loading state dict
+        if 'load_checkpoint' in self.config:
+            ckpt_path = self.config['load_checkpoint']
+            state_dict = torch.load(ckpt_path, map_location='cpu')
+            self.network.load_state_dict(state_dict)
+            self.network = self.network.cuda()
+            print('loaded checkpoint from ' + ckpt_path)
         
         loss_type = self.config['pretrain_loss']['type']
         self.loss = PRETRAIN_LOSS[loss_type](self.network.feature_size, **self.config['pretrain_loss'])
@@ -49,13 +62,29 @@ class LightningTrainer(pl.LightningModule):
         return features
 
     def training_step(self, batch, batch_idx):
-        # (rpz_a, fea_a, label_a) = batch[0]
-        # (rpz_b, fea_b, label_b) = batch[1]
-        (rpz_a, fea_a, label_a), (rpz_b, fea_b, label_b) = batch
-        output_a = self(self.network, fea_a, rpz_a)
-        output_b = self(self.network, fea_b, rpz_b)
+        if (self.config['pretrain_loss']['type'] == 'mec'):
+            with torch.no_grad():
+                for param_q, param_k in zip(self.network.parameters(), self.teacher.parameters()):
+                    param_k.data.mul_(self.momentum).add_((1 - self.momentum) * param_q.detach().data)
+                
+        if (self.config['pretrain_loss']['type'] == 'EMP'):
+            output = []
+            for (rpz, fea, label) in batch:
+                output.append(self(self.network, fea, rpz))
+            loss = self.loss(output)
+        else:
+            (rpz_a, fea_a, label_a), (rpz_b, fea_b, label_b) = batch
+            output_a = self(self.network, fea_a, rpz_a)
+            output_b = self(self.network, fea_b, rpz_b)
+            
+            if (self.config['pretrain_loss']['type'] == 'mec'):
+                teacher_a = self(self.teacher, fea_a, rpz_a)
+                teacher_b = self(self.teacher, fea_b, rpz_b)
 
-        loss = self.loss(output_a, output_b)
+                loss = self.loss(teacher_a, output_b)/2 + self.loss(teacher_b, output_a)/2
+            
+            else:
+                loss = self.loss(output_a, output_b)
 
         self.log('pretrain_loss', loss, prog_bar=True)
         if self.global_rank == 0:
@@ -70,22 +99,24 @@ class LightningTrainer(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         if self.global_rank == 0:
-            # rpz, fea, _ = batch[0][0]
-            rpz, fea, _ = batch
+            rpz, fea, label = batch
             output = self(self.network, fea, rpz)
-            return output.cpu()[::100]
+            return [output.cpu()[::100], label[0].cpu()[::100]]
         else:
             return None
 
     def validation_epoch_end(self, outputs) -> None:
         if self.global_rank == 0:
-            features = torch.cat(outputs, dim=0).cpu().numpy()
+            feats = [item for sublist in outputs for item in sublist][0::2]
+            labels = [item for sublist in outputs for item in sublist][1::2]
+            features = torch.cat(feats, dim=0).cpu().numpy()
+            colors = torch.cat(labels, dim=0).cpu().numpy() + 1
             print('Number of features: ', len(features))
             feature_embedded = TSNE(n_components=2, learning_rate='auto', perplexity=3).fit_transform(features)
             dirpath = os.path.join(self.config['base_dir'], 'tsne')
             os.makedirs(dirpath, exist_ok=True)
             dirpath = os.path.join(dirpath, f'{self.current_epoch}.png')
-            plt.scatter(feature_embedded[:, 0], feature_embedded[:, 1], s=1)
+            plt.scatter(feature_embedded[:, 0], feature_embedded[:, 1], c=colors, s=1)
             plt.savefig(dirpath, dpi=600)
             plt.cla()
 

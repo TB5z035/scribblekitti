@@ -1,5 +1,42 @@
-### 7.12 update
+## Environment
 
-change: 修改 dataloader, 加载同一个场景经过两次随机数据增强到 batch 中, 计算 barlow twins loss
+```shell
+conda create -n scribblekitti python=3.8
 
-bug unfixed: 同一个场景数据增强后 uniquify 之后的点云数目会不同, 尝试在预处理阶段进行 uniquify, 统一点云数目
+conda install pytorch==1.10.1 torchvision==0.11.2 cudatoolkit=11.3 -c pytorch -c conda-forge
+pip install torch-scatter -f https://data.pyg.org/whl/torch-1.10.1+cu113.html
+pip install -r requirements.txt
+
+# Download spconv v1.2.1 with two bugs fixed
+wget https://cloud.tsinghua.edu.cn/f/f1a0860337224c7f8585/?dl=1 -O spconv.tar.gz && tar xzvf spconv.tar.gz
+cd spconv
+sudo apt-get install libboost-all-dev
+CUDACXX=/usr/local/cuda/bin/nvcc python setup.py bdist_wheel
+pip install dist/spconv-1.2.1-cp38-cp38-linux_x86_64.whl
+```
+
+## How-to
+
+### Pretrain
+
+```shell
+python pretrain.py --config_path config/pretrain/bt_pls.yaml --dataset_config_path config/pretrain/semantickitti.yaml
+```
+
+* `pretrain/pretrain_bt.yaml`: Barlow Twins SSRL with Cylinder3D
+* `pretrain/pretrain_bt_pls.yaml`: Barlow Twins SSRL with Cylinder3D with pyramid local semantic context 
+* `pretrain/pretrain_bt_mec`: MEC SSRL with Cylinder3D
+* `pretrain/pretrain_vicreg`: VICReg SSRL with Cylinder3D
+
+### Train
+
+```shell
+python train.py --config_path config/pretrain/bt_pls.yaml --dataset_config_path config/dataset/semantickitti.yaml
+```
+* `?`: plain Cylinder3D tuning
+* `?`: Barlow Twins pretrained Cylinder3D tuning
+* `?`: MEC pretrained Cylinder3D tuning
+
+### Note
+
+`label_directory`

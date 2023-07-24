@@ -10,7 +10,7 @@ import torch
 import torch.nn as nn
 import yaml
 from dataloader.semantickitti import SemanticKITTI
-from network.cylinder3d import Cylinder3D
+from network.cylinder3d import Cylinder3D, Cylinder3DProject
 from pytorch_lightning import Trainer
 from pytorch_lightning.loggers import TensorBoardLogger, WandbLogger
 from pytorch_lightning.utilities import rank_zero_only
@@ -31,9 +31,11 @@ class LightningTrainer(pl.LightningModule):
         self.teacher = Cylinder3D(nclasses=self.nclasses, **config['model'])
         if 'load_checkpoint' in self.config:
             ckpt_path = self.config['load_checkpoint']
-            state_dict = torch.load(ckpt_path)
+            state_dict = torch.load(ckpt_path, map_location='cpu')
             self.student.load_state_dict(state_dict, strict=False)
             self.teacher.load_state_dict(state_dict, strict=False)
+            self.student = self.student.cuda()
+            self.teacher = self.teacher.cuda()
             print('loaded checkpoint from ' + ckpt_path)
         self.initialize_teacher()
 
@@ -166,7 +168,7 @@ def init(base_dir):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--config_path', default='config/training.yaml')
-    parser.add_argument('--dataset_config_path', default='config/semantickitti.yaml')
+    parser.add_argument('--dataset_config_path', default='config/dataset/semantickitti.yaml')
     args = parser.parse_args()
 
     with open(args.config_path, 'r') as f:

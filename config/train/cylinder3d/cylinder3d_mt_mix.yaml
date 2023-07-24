@@ -52,7 +52,7 @@ trainer:
   accumulate_grad_batches: 1
   num_sanity_val_steps: 1
 
-load_checkpoint: output/scribblekitti_tbw/pretrain_bt_pls/20230715-00:54:00/ckpt/last.ckpt
+load_checkpoint: output/scribblekitti_tbw/pretrain_bt_mec/20230716-11:08:08/model/22.ckpt
 
 optimizer:
   lr: 0.001

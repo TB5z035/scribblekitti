@@ -36,16 +36,18 @@ val_dataloader:
 
 trainer:
   max_epochs: 75
-  gpus: -1
+  gpus: [0,1,2,3]
   check_val_every_n_epoch: 1
-  default_root_dir: 'output'
+  default_root_dir: '/DATA_EDS2/zhangyk2306'
   accelerator: 'ddp'
   sync_batchnorm: True
   accumulate_grad_batches: 2
   num_sanity_val_steps: 10
 
+# load_checkpoint: output/scribblekitti_tbw/pretrain_bt/20230719-13:13:20/model/6.ckpt
+
 optimizer:
-  lr: 0.1
+  lr: 0.001
 
 logger:
   project: 'scribblekitti_tbw'

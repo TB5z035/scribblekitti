@@ -7,7 +7,7 @@ pretrain_loss:
 
 dataset:
   root_dir: '/data22/tb5zhh/datasets/SemanticKITTI/sequences'
-  prefix: cylindrical_twin_with_quantize
+  prefix: cylindrical_twin
   spatial_shape: [480,360,32]
   max_bound: [50,3.1415926,2]
   min_bound: [0,-3.1415926,-4]
@@ -35,7 +35,7 @@ val_dataloader:
 
 trainer:
   max_epochs: 75
-  gpus: [0]
+  gpus: [0,1]
   check_val_every_n_epoch: 1
   default_root_dir: 'output'
   accelerator: 'ddp'
@@ -43,8 +43,10 @@ trainer:
   accumulate_grad_batches: 2
   num_sanity_val_steps: 10
 
+load_checkpoint: /home/zhangyk2306/scribblekitti/output/scribblekitti_tbw/pretrain_bt_mec/20230719-14:26:45/model/4.ckpt
+
 optimizer:
-  lr: 0.1
+  lr: 0.001
 
 logger:
   project: 'scribblekitti_tbw'

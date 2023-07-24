@@ -13,7 +13,6 @@ class TwinsLoss(nn.Module):
         feature_size_b, batch_size_b = feature_b.shape
         assert batch_size_a == batch_size_b, f"Batch size {batch_size_a} is not equal to {batch_size_b}"
         assert feature_size_a == feature_size_b, f"Feature size {feature_size_a} is not equal to {feature_size_b}"
-        # feature_size = min(feature_size_a, feature_size_b)
         return batch_size_a, feature_size_a
 
     def forward(self, feature_a, feature_b):
@@ -35,14 +34,16 @@ class BarlowTwinsLoss(TwinsLoss):
         self.bn = torch.nn.BatchNorm1d(num_features, affine=False)
 
     def forward(self, feature_a, feature_b):
-        # feature [B, d]
         # feature_a / feature_b -> (batch_size, feature_size)
         batch_size, feature_size = self._assert_feat(feature_a, feature_b)
-
-        cross_correlation = self.bn(feature_a).T @ self.bn(feature_b) # [d, d]
+        cross_correlation = self.bn(feature_a).T @ self.bn(feature_b)
         cross_correlation.div_(batch_size)
-        torch.distributed.all_reduce(cross_correlation)
-
+        
+        try:
+            torch.distributed.all_reduce(cross_correlation) / torch.distributed.get_world_size()
+        except:
+            pass
+        
         on_diag = torch.diagonal(cross_correlation).add_(-1).pow_(2).sum()
         off_diag = off_diagonal(cross_correlation).pow_(2).sum()
         loss = on_diag + self.coef * off_diag
@@ -52,36 +53,36 @@ class BarlowTwinsLoss(TwinsLoss):
 
 class MECTwinsLoss(TwinsLoss):
 
-    def __init__(self, num_features=128, lamb=0.1, mu=0.1, n=4, **_) -> None:
+    def __init__(self, num_features=128, n=4, **_) -> None:
         super().__init__()
-        self.lamb = lamb
-        self.mu = mu
         self.n = n
         self.bn = torch.nn.BatchNorm1d(num_features, affine=False)
 
     def forward(self, feature_a, feature_b):
         batch_size, feature_size = self._assert_feat(feature_a, feature_b)
-        self.lamb = 1 / 0.06 / batch_size
+        eps_d = 1e10 / feature_size
+        self.lamb = 1 / (batch_size * eps_d)
         self.mu = (batch_size + feature_size) / 2
-        cross_correlation = self.lamb * torch.mm(self.bn(feature_a).t(), self.bn(feature_b)) / batch_size
+        c = self.bn(feature_a).T @ self.bn(feature_b) * self.lamb
+        
+        power_matrix = c
+        sum_matrix = torch.zeros_like(power_matrix)
 
-        sum_p = torch.zeros_like(cross_correlation)
-        power = torch.clone(cross_correlation)
-        for i in range(1, self.n + 1):
-            if i > 1:
-                power = torch.mm(power, cross_correlation)
-            if i % 2 == 1:
-                sum_p += power / i
-            else:
-                sum_p -= power / i
-        loss = - self.mu * torch.trace(sum_p)
+        for k in range(1, self.n + 1):
+            if k > 1:
+                power_matrix = torch.matmul(power_matrix, c)
+            if (k + 1) % 2 == 0:
+                sum_matrix += power_matrix / k
+            else: 
+                sum_matrix -= power_matrix / k
+        
+        loss = - torch.trace(sum_matrix) * self.mu
         
         return loss
 
 class VICReg(TwinsLoss):
     def __init__(self, num_features=128, sim_coeff=25.0, std_coeff=25.0, cov_coeff=1.0, **_) -> None:
         super().__init__()
-        self.bn = torch.nn.BatchNorm1d(num_features, affine=False)
         self.num_features = num_features
         self.sim_coeff = sim_coeff
         self.std_coeff = std_coeff
@@ -89,31 +90,94 @@ class VICReg(TwinsLoss):
 
     def forward(self, feature_a, feature_b):
         batch_size, feature_size = self._assert_feat(feature_a, feature_b)
-        
         # invariance: same point, two transforms
-        
         repr_loss = F.mse_loss(feature_a, feature_b)
-
         feature_a = feature_a - feature_a.mean(dim=0)
         feature_b = feature_b - feature_b.mean(dim=0)
         
         # variance: within batch
-
         std_a = torch.sqrt(feature_a.var(dim=0) + 0.0001)
         std_b = torch.sqrt(feature_b.var(dim=0) + 0.0001)
         std_loss = torch.mean(F.relu(1 - std_a)) / 2 + torch.mean(F.relu(1 - std_b)) / 2
         
         # covariance: within batch
-
         cov_a = (feature_a.T @ feature_a) / (feature_size - 1)
         cov_b = (feature_b.T @ feature_b) / (feature_size - 1)
         cov_loss = off_diagonal(cov_a).pow_(2).sum().div(
             self.num_features
-        ) + off_diagonal(cov_b).pow_(2).sum().div(self.num_features)
+            ) + off_diagonal(cov_b).pow_(2).sum().div(self.num_features)
 
         loss = (
             self.sim_coeff * repr_loss
             + self.std_coeff * std_loss
             + self.cov_coeff * cov_loss
         )
+        return loss
+
+def chunk_avg(x, n_chunks=2, normalize=False):
+    x_list = x.chunk(n_chunks,dim=0)
+    x = torch.stack(x_list,dim=0)
+    if not normalize:
+        return x.mean(0)
+    else:
+        return F.normalize(x.mean(0),dim=1)
+  
+class TotalCodingRate(nn.Module):
+    def __init__(self, eps=0.01):
+        super(TotalCodingRate, self).__init__()
+        self.eps = eps
+        
+    def compute_discrimn_loss(self, W):
+        p, m = W.shape
+        I = torch.eye(p,device=W.device)
+        scalar = p / (m * self.eps)
+        logdet = torch.logdet(I + scalar * W.matmul(W.T))
+        return logdet / 2.
+    
+    def forward(self,X):
+        return - self.compute_discrimn_loss(X.T)
+
+class Similarity_Loss(nn.Module):
+    def __init__(self, ):
+        super().__init__()
+        pass
+
+    def forward(self, z_list, z_avg):
+        z_sim = 0
+        num_patch = len(z_list)
+        z_list = torch.stack(list(z_list), dim=0)
+        z_avg = z_list.mean(dim=0)
+        
+        z_sim = 0
+        for i in range(num_patch):
+            z_sim += F.cosine_similarity(z_list[i], z_avg, dim=1).mean()
+            
+        z_sim = z_sim/num_patch
+        z_sim_out = z_sim.clone().detach()
+                
+        return -z_sim, z_sim_out
+
+class EMPLoss(TwinsLoss):
+    def __init__(self, num_features=128, num_patches=20, tcr=1, **_) -> None:
+        super().__init__()
+        self.TCR = TotalCodingRate()
+        self.contractive_loss = Similarity_Loss()
+        self.num_features = num_features
+        self.num_patches = num_patches
+        self.tcr = tcr
+    
+    def forward(self, features):
+        batch_size, feature_size = features[0].shape
+        feature_list = features.chunk(num_patches, dim=0)
+        
+        loss_TCR = 0
+        for i in range(num_patches):
+            loss_TCR += TCR(feature_list[i])
+        loss_TCR = loss_TCR/num_patches
+        
+        z_list = z_proj.chunk(num_patches, dim=0)
+        z_avg = chunk_avg(z_proj, num_patches)
+        loss_contract, _ = self.contractive_loss(z_list, z_avg)
+        
+        loss = self.patch_sim * loss_contract + self.tcr * loss_TCR
         return loss

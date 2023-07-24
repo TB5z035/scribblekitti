@@ -270,6 +270,25 @@ class CylindricalTwin(Cylindrical, prefix='cylindrical_twin'):
             (tea_xyzrs, tea_feas, tea_labels),
             (stu_xyzrs, stu_feas, stu_labels)
         ]
+        
+class CylindricalEMP(Cylindrical, prefix='cylindrical_emp'):
+
+    def __getitem__(self, idx):
+        xyzr = self.get_lidar(idx)
+        label = self.get_label(idx)
+        rtn = []
+        for i in range(20):
+            rtn.append(self.get_cylindrical_scene(xyzr, label, self.config.get('aug', None)))
+        return rtn
+    
+    @staticmethod
+    def _collate_fn(batch):
+        list_batch = zip(*batch)
+        rtn = []
+        for i in list_batch:
+            xyzrs, feas, labels = zip(*i)
+            rtn.append((xyzrs, feas, labels))
+        return rtn
 
 
 class PLSCylindricalTwin(CylindricalTwin, PLSCylindrical, prefix='pls_cylindrical_twin'):
@@ -320,6 +339,3 @@ if __name__ == '__main__':
     val_dataset = SemanticKITTI(split='valid', config=config['val_dataset'])
     loader = DataLoader(dataset=dataset, collate_fn=dataset._collate_fn, **config['train_dataloader'])
     val_loader = DataLoader(dataset=dataset, collate_fn=dataset._collate_fn, **config['val_dataloader'])
-
-    from IPython import embed
-    embed()
