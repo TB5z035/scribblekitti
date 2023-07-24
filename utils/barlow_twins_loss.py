@@ -111,11 +111,15 @@ class VICReg(TwinsLoss):
         # covariance: within batch
 
         cov_a = (feature_a.T @ feature_a) / (batch_size - 1)
+        down_a = (feature_a.pow(2).sum(dim=0, keepdim=True).sqrt().T) @ (feature_a.pow(2).sum(dim=0, keepdim=True).sqrt())
+        cov_a.div_(down_a)
         cov_b = (feature_b.T @ feature_b) / (batch_size - 1)
+        down_b = (feature_b.pow(2).sum(dim=0, keepdim=True).sqrt().T) @ (feature_b.pow(2).sum(dim=0, keepdim=True).sqrt())
+        cov_b.div_(down_b)
         cov_loss = off_diagonal(cov_a).pow_(2).sum().div(
-            self.num_features
-        ) + off_diagonal(cov_b).pow_(2).sum().div(self.num_features)
-        breakpoint()
+            (feature_size - 1) **2
+        ) + off_diagonal(cov_b).pow_(2).sum().div((feature_size - 1) **2)
+
         print(repr_loss, std_loss, cov_loss)
 
         loss = (
