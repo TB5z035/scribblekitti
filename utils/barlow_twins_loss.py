@@ -9,8 +9,8 @@ class TwinsLoss(nn.Module):
         super().__init__()
 
     def _assert_feat(self, feature_a, feature_b):
-        feature_size_a, batch_size_a = feature_a.shape
-        feature_size_b, batch_size_b = feature_b.shape
+        batch_size_a, feature_size_a = feature_a.shape
+        batch_size_b, feature_size_b = feature_b.shape
         assert batch_size_a == batch_size_b, f"Batch size {batch_size_a} is not equal to {batch_size_b}"
         assert feature_size_a == feature_size_b, f"Feature size {feature_size_a} is not equal to {feature_size_b}"
         # feature_size = min(feature_size_a, feature_size_b)
@@ -38,17 +38,18 @@ class BarlowTwinsLoss(TwinsLoss):
         # feature [B, d]
         # feature_a / feature_b -> (batch_size, feature_size)
         batch_size, feature_size = self._assert_feat(feature_a, feature_b)
+        feature_a = self.bn(feature_a)
+        feature_b = self.bn(feature_b)
 
-        cross_correlation = self.bn(feature_a).T @ self.bn(feature_b) # [d, d]
-        cross_correlation.div_(batch_size)
+        cross_correlation = feature_a.T @ feature_b # [d, d]
         torch.distributed.all_reduce(cross_correlation) 
         cross_correlation.div_(torch.distributed.get_world_size())
         down = (feature_a.pow(2).sum(dim=0, keepdim=True).sqrt().T) @ (feature_b.pow(2).sum(dim=0, keepdim=True).sqrt())
         cross_correlation.div_(down)
 
+        on_diag = torch.diagonal(cross_correlation).add_(-1).pow_(2).sum().div(feature_size)
+        off_diag = off_diagonal(cross_correlation).pow_(2).sum().div((feature_size - 1) ** 2)
 
-        on_diag = torch.diagonal(cross_correlation).add_(-1).pow_(2).sum()
-        off_diag = off_diagonal(cross_correlation).pow_(2).sum()
         loss = on_diag + self.coef * off_diag
 
         return loss
@@ -109,11 +110,13 @@ class VICReg(TwinsLoss):
         
         # covariance: within batch
 
-        cov_a = (feature_a.T @ feature_a) / (feature_size - 1)
-        cov_b = (feature_b.T @ feature_b) / (feature_size - 1)
+        cov_a = (feature_a.T @ feature_a) / (batch_size - 1)
+        cov_b = (feature_b.T @ feature_b) / (batch_size - 1)
         cov_loss = off_diagonal(cov_a).pow_(2).sum().div(
             self.num_features
         ) + off_diagonal(cov_b).pow_(2).sum().div(self.num_features)
+        breakpoint()
+        print(repr_loss, std_loss, cov_loss)
 
         loss = (
             self.sim_coeff * repr_loss
