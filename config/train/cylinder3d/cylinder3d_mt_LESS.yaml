@@ -13,12 +13,13 @@ dataset:
     student: ['rotate', 'flip', 'scale', 'noise']
     teacher: ['rotate', 'flip']
   bin_size: [[24,9],[48,18],[96,36]]
+  LESS_target_diretory: 'LESS_230720_single_scan'
 
 val_dataset:
   root_dir: '/data22/tb5zhh/datasets/SemanticKITTI/sequences'
-  prefix: cylindrical_less
+  prefix: cylindrical_mt
   label_directory: labels
-  spatial_shape: [480,360,32]
+  spatial_shape: [480,360,32] 
   max_bound: [50,3.1415926,2]
   min_bound: [0,-3.1415926,-4]
   bin_size: [[24,9],[48,18],[96,36]]
@@ -29,9 +30,9 @@ val_dataset:
 #   num_workers: 8
 
 train_dataloader:
-  batch_size: 2
+  batch_size: 4
   shuffle: True
-  num_workers: 1
+  num_workers: 8
 
 val_dataloader:
   batch_size: 2
@@ -44,8 +45,8 @@ test_dataloader:
   num_workers: 4
 
 trainer:
-  max_epochs: 75
-  gpus: [7]
+  max_epochs: 24
+  gpus: -1
   check_val_every_n_epoch: 1
   default_root_dir: 'output'
   accelerator: 'ddp'

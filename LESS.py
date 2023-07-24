@@ -6,10 +6,12 @@ from scipy.spatial.distance import cdist
 from scipy.sparse import csr_matrix
 from scipy.sparse.csgraph import connected_components
 import time
+import matplotlib.pyplot as plt
+import argparse
 
     
 class LESS():
-    def __init__(self,config,config_LESS,split='train', label_directory='scribbles',target_directory='LESS') -> None:
+    def __init__(self,config,config_LESS,args,split='train', label_directory='scribbles',target_directory='LESS') -> None:
         self.config = config
         self.split = split
         self.label_directory = label_directory
@@ -21,9 +23,11 @@ class LESS():
         self.percent = config_LESS['RANSAC']['percent']
         self.d = config_LESS['cluster']['d']
         self.tic = 0
-        self.Save = True
+        self.Save = config_LESS['save']
         self.OOM_bar = config_LESS['RANSAC']['OOM_bar']
-
+        self.save_file_number = config_LESS['save_file_number']
+        self.seq_to_process = int(args.solve_seq)
+        self.start_number_in_one_seq = config_LESS['start_number_in_one_seq']
 
     def map_label(self,label, map_dict):
         maxkey = 0
@@ -47,7 +51,11 @@ class LESS():
 
     def run_LESS(self):
         root_dir = self.config['root_dir']
+        cnt_seq = 0
         for seq in self.config['split'][self.split]:
+            if self.seq_to_process >= 0:
+                if seq != self.seq_to_process:
+                    continue
             seq = '{0:02d}'.format(int(seq))
             label_class_dir = os.path.join(root_dir, seq,self.target_directory, 'group')
             labels_dir = os.path.join(root_dir, seq,self.target_directory, 'labels')
@@ -78,7 +86,13 @@ class LESS():
         cnt = 0
         label_file_exist = os.listdir(label_path[0].replace('scribbles',self.target_directory+'/group').split('/000000.label')[0])
         label_file_exist.sort()
-        len_file_exist = len(label_file_exist)
+        if not self.Save:
+            if self.start_number_in_one_seq != 0:
+                len_file_exist = self.start_number_in_one_seq
+            else:
+                len_file_exist = len(label_file_exist)
+        else:
+            len_file_exist = self.save_file_number
         # len_file_exist = 4000
 
         for lidar_file,label_file in zip(lidar_path,label_path):
@@ -88,7 +102,7 @@ class LESS():
                 self.scans_cnt += 1
                 pose = pose_file.readline()
                 continue
-
+            
             # start a new subsequence 
             if cnt == 0: 
                 file_list = []
@@ -112,9 +126,9 @@ class LESS():
             label = self.map_label(label, self.config['learning_map'])
             # Matrix_RT = np.array([r11,r12,r13,t11],[r21,r22,r23,t12],[r31,r32,r33,t13],[0,0,0,1])
             
-            lidar_x = lidar_x*r11 +r12*lidar_y+r13*lidar_z + t14
-            lidar_y = lidar_x*r21 +r22*lidar_y+r23*lidar_z + t24
-            lidar_z = lidar_x*r31 +r32*lidar_y+r33*lidar_z + t34
+            # lidar_x = lidar_x*r11 +r12*lidar_y+r13*lidar_z + t14
+            # lidar_y = lidar_x*r21 +r22*lidar_y+r23*lidar_z + t24
+            # lidar_z = lidar_x*r31 +r32*lidar_y+r33*lidar_z + t34
 
             lidar_x = np.expand_dims(lidar_x,axis=1)
             lidar_y = np.expand_dims(lidar_y,axis=1)
@@ -136,7 +150,8 @@ class LESS():
 
                 # For visualization, save Origin points
                 if self.Save:
-                    lidar_xyz_unified.tofile(str(lidar_xyz_unified.shape[0])+'_Origin.bin')
+                    # lidar_xyz_unified.tofile(str(lidar_xyz_unified.shape[0])+'_Origin.bin')
+                    self.save_matrix_to_txt(lidar_xyz_unified,'points_with_ground.txt')
                 y_max = np.max(lidar_xyz_unified[:,1])
                 y_min = np.min(lidar_xyz_unified[:,1])
                 x_max = np.max(lidar_xyz_unified[:,0])
@@ -144,19 +159,20 @@ class LESS():
                 flag_points_less_than_OOM = True
                 cnt_OOM = 0
                 lidar_xyz_unified_copy = lidar_xyz_unified
+                dist = self.dist
                 while flag_points_less_than_OOM:
                     lidar_xyz_unified = lidar_xyz_unified_copy.copy()
 
                     # run RANSAC for each block
-                    for i in range(int(np.round(x_min/l_grid)),int(np.round(x_max/l_grid))):
-                        for j in range(int(np.round(y_min/l_grid)),int(np.round(y_max/l_grid))):
+                    for i in range(int(np.floor(x_min/l_grid)),int(np.ceil(x_max/l_grid))):
+                        for j in range(int(np.floor(y_min/l_grid)),int(np.ceil(y_max/l_grid))):
                             grid_x_min = i*l_grid
                             grid_x_max = (i+1)*l_grid
                             grid_y_min = j*l_grid
                             grid_y_max = (j+1)*l_grid
                             indice = np.logical_and(np.logical_and(lidar_xyz_unified[:,1]>grid_y_min ,lidar_xyz_unified[:,1]<grid_y_max),np.logical_and(lidar_xyz_unified[:,0]>grid_x_min ,lidar_xyz_unified[:,0]<grid_x_max ) ) 
                             if np.where(indice==True)[0].shape[0] >= 3:
-                                lidar_xyz_unified[indice],label_save[indice],label_class[indice] = self.RANSAC(lidar_xyz_unified=lidar_xyz_unified[indice],label_save=label_save[indice],label_class=label_class[indice],label_unified=label_unified[indice],dist=self.dist,iter_max=iter_max,percent=percent)
+                                lidar_xyz_unified[indice],label_save[indice],label_class[indice] = self.RANSAC(lidar_xyz_unified=lidar_xyz_unified[indice],label_save=label_save[indice],label_class=label_class[indice],label_unified=label_unified[indice],dist=dist,iter_max=iter_max,percent=percent)
                     
                     # avoid OOM
                     if len(np.unique(np.where(lidar_xyz_unified!=np.array([0,0,0])[0]))) < self.OOM_bar:
@@ -165,7 +181,7 @@ class LESS():
                         cnt_OOM += 1
                         if cnt_OOM >= 5:
                             cnt_OOM = 0
-                            self.dist += 0.5 
+                            dist += 0.5 
                         print('points shape is (',len(np.unique(np.where(lidar_xyz_unified!=np.array([0,0,0])[0]))),', 3), May cause OOM',flush=True)
                 
                 cnt = 0
@@ -187,14 +203,16 @@ class LESS():
 
                 # For visualization, save Origin points
                 if self.Save:
-                    lidar_xyz_unified.tofile(str(lidar_xyz_unified.shape[0])+'_Origin.bin')
+                    # lidar_xyz_unified.tofile(str(lidar_xyz_unified.shape[0])+'_Origin.bin')
+                    self.save_matrix_to_txt(lidar_xyz_unified,'points_with_ground.txt')
                 y_max = np.max(lidar_xyz_unified[:,1])
                 y_min = np.min(lidar_xyz_unified[:,1])
                 x_max = np.max(lidar_xyz_unified[:,0])
-                x_min = np.min(lidar_xyz_unified[:,0])
+                x_min = np.min(lidar_xyz[:,0])
                 flag_points_less_than_OOM = True
                 cnt_OOM = 0
                 lidar_xyz_unified_copy = lidar_xyz_unified
+                dist = self.dist
                 while flag_points_less_than_OOM:
                     lidar_xyz_unified = lidar_xyz_unified_copy.copy()
 
@@ -207,7 +225,7 @@ class LESS():
                             grid_y_max = (j+1)*l_grid
                             indice = np.logical_and(np.logical_and(lidar_xyz_unified[:,1]>grid_y_min ,lidar_xyz_unified[:,1]<grid_y_max),np.logical_and(lidar_xyz_unified[:,0]>grid_x_min ,lidar_xyz_unified[:,0]<grid_x_max ) ) 
                             if np.where(indice==True)[0].shape[0] >= 3:
-                                lidar_xyz_unified[indice],label_save[indice],label_class[indice] = self.RANSAC(lidar_xyz_unified=lidar_xyz_unified[indice],label_save=label_save[indice],label_class=label_class[indice],label_unified=label_unified[indice],dist=self.dist,iter_max=iter_max,percent=percent)
+                                lidar_xyz_unified[indice],label_save[indice],label_class[indice] = self.RANSAC(lidar_xyz_unified=lidar_xyz_unified[indice],label_save=label_save[indice],label_class=label_class[indice],label_unified=label_unified[indice],dist=dist,iter_max=iter_max,percent=percent)
                     
                     # avoid OOM
                     if len(np.unique(np.where(lidar_xyz_unified!=np.array([0,0,0])[0]))) < self.OOM_bar:
@@ -216,7 +234,7 @@ class LESS():
                         cnt_OOM += 1
                         if cnt_OOM >= 5:
                             cnt_OOM = 0
-                            self.dist += 0.5 
+                            dist += 0.2 
                         print('points shape is (',len(np.unique(np.where(lidar_xyz_unified!=np.array([0,0,0])[0]))),', 3), May cause OOM',flush=True)
                 
                 cnt = 0
@@ -317,8 +335,11 @@ class LESS():
         
         # save results
         if self.Save:
-            points.tofile(str(points.shape[0])+'_withoutground.bin')
-            groups.tofile(str(points.shape[0])+'_groups.bin')
+            self.save_matrix_to_txt(points,'points_without_ground.txt')
+            points_with_rgb = self.get_points_with_rgb(points,groups)
+            self.save_matrix_to_txt(points_with_rgb,'rgb_points_without_ground.txt')
+            # points.tofile(str(points.shape[0])+'_withoutground.bin')
+            # groups.tofile(str(points.shape[0])+'_groups.bin')
         for i in range(n_components):
             # get each label of points in the group i
             index_in_origin_point_cloud = points_index[np.where(groups==i)]
@@ -368,7 +389,40 @@ class LESS():
                 take_time = toc - self.tic
                 print('processing seq:',seq,',complete',self.scans_cnt,'/',self.seq_len,',RANSAC+cluster takes',take_time,'s',flush=True)
 
+    def save_matrix_to_txt(self,matrix, filename):
+        # Define the format string to separate elements with spaces
+        format_str = ' '.join(['%s'] * matrix.shape[1])
+        # Save the matrix to the text file
+        np.savetxt(filename, matrix, fmt=format_str)
+
+
+    def get_points_with_rgb(self,points, groups):
+        # Get the unique group labels
+        unique_groups = np.unique(groups)
+
+        # Generate a color map based on the number of unique groups
+        num_colors = max(len(unique_groups), 20)
+        if num_colors <= 20:
+            cmap = plt.get_cmap('tab20b')
+        else:
+            cmap = plt.get_cmap('rainbow')
+
+        colors = cmap(np.linspace(0, 1, num_colors))
+
+        # Create an RGB matrix
+        rgb_matrix = np.zeros((groups.shape[0], 3), dtype=np.uint8)
+
+        # Assign colors to each group label
+        for i, group in enumerate(unique_groups):
+            indices = np.where(groups == group)[0]
+            rgb_matrix[indices] = (colors[i-1][:3] * 255).astype(np.uint8)
+
+        points_with_rgb = np.concatenate((points,rgb_matrix),axis=1)
+
+        return points_with_rgb
+
 if __name__ == '__main__':
+    # config_path = 'config/LESS_dist3.yaml'
     config_path = 'config/LESS.yaml'
     dataset_config_path = 'config/dataset/semantickitti.yaml'
 
@@ -378,8 +432,10 @@ if __name__ == '__main__':
         config['dataset'].update(yaml.safe_load(f))
     with open(dataset_config_path, 'r') as f:
         config['val_dataset'].update(yaml.safe_load(f))
-
-    less = LESS(config['dataset'],config['LESS'])
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--solve_seq', default=9,help='-1 means all,0-10 should be input')
+    args = parser.parse_args()
+    less = LESS(config['dataset'],config['LESS'],args=args)
     less.run_LESS()
 
     

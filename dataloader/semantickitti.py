@@ -284,6 +284,7 @@ class PLSCylindricalTwinSample(PLSCylindricalTwin, prefix='pls_cylindrical_twin_
 
 class CylindricalLess(Cylindrical, prefix='cylindrical_less'):
     def __init__(self, split, config):
+        self.target_directory = config['LESS_target_diretory']
         super().__init__(split, config)
         # self.pose_paths = []
         # pose_path = os.path.join(self.root_dir,seq,'pose.txt')
@@ -364,12 +365,12 @@ class CylindricalLess(Cylindrical, prefix='cylindrical_less'):
             assert (len(lidar_paths) == len(label_paths))
             self.label_paths.extend(label_paths)
 
-            label_group_dir = os.path.join(self.root_dir, seq, 'LESS','group')
+            label_group_dir = os.path.join(self.root_dir, seq, self.target_directory,'group')
             label_group_paths = [os.path.join(dp, f) for dp, dn, fn in os.walk(os.path.expanduser(label_group_dir)) for f in fn if f.endswith('.label')]
             # assert (len(lidar_paths) == len(label_group_paths))
             self.label_group_paths.extend(label_group_paths)
 
-            LESS_label_dir = os.path.join(self.root_dir, seq, 'LESS','labels')
+            LESS_label_dir = os.path.join(self.root_dir, seq, self.target_directory,'labels')
             LESS_labels_paths = [os.path.join(dp, f) for dp, dn, fn in os.walk(os.path.expanduser(LESS_label_dir)) for f in fn if f.endswith('.label')]
             # assert (len(lidar_paths) == len(LESS_labels_paths))
             self.LESS_labels_paths.extend(LESS_labels_paths)

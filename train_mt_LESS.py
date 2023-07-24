@@ -6,6 +6,7 @@ from datetime import datetime
 
 import numpy as np
 import pytorch_lightning as pl
+# import lightning.pytorch as pl
 import torch
 import torch.nn as nn
 import yaml
@@ -13,6 +14,8 @@ from dataloader.semantickitti import SemanticKITTI
 from network.cylinder3d import Cylinder3D
 from pytorch_lightning import Trainer
 from pytorch_lightning.loggers import WandbLogger
+# from lightning.pytorch import Trainer
+# from lightning.pytorch.loggers import WandbLogger
 from torch.optim import Adam
 from torch.utils.data import DataLoader
 from torchmetrics import ConfusionMatrix
@@ -69,9 +72,11 @@ class LightningTrainer(pl.LightningModule):
         teacher_output = self(self.teacher, teacher_fea, teacher_rpz, batch_size)
         cl_loss = self.loss_cl(student_output, teacher_output, student_label)
         ls_loss = self.loss_ls(student_output.softmax(1), student_label, ignore=0)
-        loss_LESS = self.less_loss(student_output,student_label,LESS_labels,label_group)
-        loss = cl_loss + ls_loss + loss_LESS
-
+        loss_LESS = self.less_loss(student_output.softmax(1),student_label,LESS_labels,label_group)
+        loss = cl_loss + 2 * ls_loss + loss_LESS
+        # sch = self.lr_schedulers()
+        # if self.trainer.is_last_batch and (self.trainer.current_epoch + 1) % 1 == 0:
+            # sch.step()
         self.log('cl_loss', cl_loss, on_epoch=True, prog_bar=True)
         self.log('ls_loss', ls_loss, on_epoch=True, prog_bar=True)
         self.log('LESS_loss',loss_LESS,on_epoch=True, prog_bar=True)
@@ -118,18 +123,19 @@ class LightningTrainer(pl.LightningModule):
 
     def configure_optimizers(self):
         optimizer = Adam(self.student.parameters(), **self.config['optimizer'])
-        return [optimizer]
+        scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.9)
+        return [optimizer],[scheduler]
 
     def setup(self, stage):
         self.train_dataset = SemanticKITTI(split='train', config=self.config['dataset'])
-        # self.val_dataset = SemanticKITTI(split='valid', config=self.config['val_dataset'])
+        self.val_dataset = SemanticKITTI(split='valid', config=self.config['val_dataset'])
         # here! 
 
     def train_dataloader(self):
         return DataLoader(dataset=self.train_dataset, collate_fn=self.train_dataset._collate_fn, **self.config['train_dataloader'])
 
-    # def val_dataloader(self):
-    #     return DataLoader(dataset=self.val_dataset, collate_fn=self.val_dataset._collate_fn, **self.config['val_dataloader'])
+    def val_dataloader(self):
+        return DataLoader(dataset=self.val_dataset, collate_fn=self.val_dataset._collate_fn, **self.config['val_dataloader'])
     # here!
 
     def initialize_teacher(self) -> None:

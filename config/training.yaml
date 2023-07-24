@@ -34,7 +34,7 @@ val_dataloader:
 
 trainer:
   max_epochs: 75
-  gpus: [0]
+  gpus: -1
   check_val_every_n_epoch: 1
   default_root_dir: 'output'
   accelerator: 'ddp'
