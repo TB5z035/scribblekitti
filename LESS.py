@@ -273,39 +273,67 @@ class LESS():
             iter += 1
             # exit if iter equals to iter_max or ground point is bigger than ?% of whole points.
             if lidar_ground_max[0].shape[0] >= percent*lidar_xyz_unified.shape[0]:
+                # get the ground points' labels
+                labels_scribble = label_unified[lidar_ground_max[0],:]
+                # get their unique labels
+                labels_unique = np.unique(labels_scribble)
+                # create one hot encode, and let the unique labels be the 1
+                label_add = np.zeros((1,20))
+                label_add[0,labels_unique]=1
+                # let this row be the label_add
+                label_save[lidar_ground_max[0],:] = label_add
+
+                # get this group of groud points should be what kind label: weak propogated or scribble.
+                if len(labels_unique) == 1:
+                        if labels_scribble[0] == 0:
+                            # this ground is nothing, not be labeled
+                            label_class[lidar_ground_max[0]] = 0
+                        else:
+                            # this ground is propogated
+                            # Hard to reach, but possible
+                            label_class[lidar_ground_max[0]] = 2
+                # then, it can be propogated and weak, which propogated is just appear when len is 2 and label is something and 0(no label).
+                # So if len is 2 and one is 0, it must be propogated
+                elif (len(labels_unique) == 2) & (labels_unique[0] == 0):
+                    # this group is propogated
+                    label_class[lidar_ground_max[0]] = 2
+                else:
+                    # this group is weak
+                    label_class[lidar_ground_max[0]] = 3
+                # let the ground point equal to (0,0,0)
+                lidar_xyz_unified[lidar_ground_max[0],:] = 0
                 break
             elif iter == iter_max:
-                break
-        
-        # get the ground points' labels
-        labels_scribble = label_unified[lidar_ground_max[0],:]
-        # get their unique labels
-        labels_unique = np.unique(labels_scribble)
-        # create one hot encode, and let the unique labels be the 1
-        label_add = np.zeros((1,20))
-        label_add[0,labels_unique]=1
-        # let this row be the label_add
-        label_save[lidar_ground_max[0],:] = label_add
+                # get the ground points' labels
+                labels_scribble = label_unified[lidar_ground_max[0],:]
+                # get their unique labels
+                labels_unique = np.unique(labels_scribble)
+                # create one hot encode, and let the unique labels be the 1
+                label_add = np.zeros((1,20))
+                label_add[0,labels_unique]=1
+                # let this row be the label_add
+                label_save[lidar_ground_max[0],:] = label_add
 
-        # get this group of groud points should be what kind label: weak propogated or scribble.
-        if len(labels_unique) == 1:
-                if labels_scribble[0] == 0:
-                    # this ground is nothing, not be labeled
-                    label_class[lidar_ground_max[0]] = 0
-                else:
-                    # this ground is propogated
-                    # Hard to reach, but possible
+                # get this group of groud points should be what kind label: weak propogated or scribble.
+                if len(labels_unique) == 1:
+                        if labels_scribble[0] == 0:
+                            # this ground is nothing, not be labeled
+                            label_class[lidar_ground_max[0]] = 0
+                        else:
+                            # this ground is propogated
+                            # Hard to reach, but possible
+                            label_class[lidar_ground_max[0]] = 2
+                # then, it can be propogated and weak, which propogated is just appear when len is 2 and label is something and 0(no label).
+                # So if len is 2 and one is 0, it must be propogated
+                elif (len(labels_unique) == 2) & (labels_unique[0] == 0):
+                    # this group is propogated
                     label_class[lidar_ground_max[0]] = 2
-        # then, it can be propogated and weak, which propogated is just appear when len is 2 and label is something and 0(no label).
-        # So if len is 2 and one is 0, it must be propogated
-        elif (len(labels_unique) == 2) & (labels_unique[0] == 0):
-            # this group is propogated
-            label_class[lidar_ground_max[0]] = 2
-        else:
-            # this group is weak
-            label_class[lidar_ground_max[0]] = 3
-        # let the ground point equal to (0,0,0)
-        lidar_xyz_unified[lidar_ground_max[0],:] = 0
+                else:
+                    # this group is weak
+                    label_class[lidar_ground_max[0]] = 3
+                # let the ground point equal to (0,0,0)
+                lidar_xyz_unified[lidar_ground_max[0],:] = 0
+                break
         return lidar_xyz_unified,label_save,label_class
 
 
@@ -376,7 +404,13 @@ class LESS():
         # save group array, size N*1, value can be 0,1,2,3, which represents the nothing, scribbles, propogated and weak.
         # save the label array, size N*20, value is one hot encoded
         file_len_old = 0
-
+        # nothing = label_class[label_class==0]
+        # scribble = label_class[label_class==1]
+        # propogated = label_class[label_class==2]
+        # weak = label_class[label_class==3]
+        # print(nothing.shape,'\n',scribble.shape,'\n',propogated.shape,'\n',weak.shape,'\n',)
+        # weak_label = label_save[np.where(label_class==3)[0],:]
+        # propogated_label = label_save[np.where(label_class==2)[0],:]
         if not self.Save:
             for file_len,file_name in zip(file_len_list,file_list):
                 label_class_file = os.path.join(label_class_dir,file_name)
