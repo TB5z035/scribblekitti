@@ -6,7 +6,7 @@ pretrain_loss:
   type: vicreg
 
 dataset:
-  root_dir: '/data22/tb5zhh/datasets/SemanticKITTI/sequences'
+  root_dir: '/home/tb5zhh/workspace/datasets/SemanticKITTI/sequences'
   prefix: cylindrical_twin
   spatial_shape: [480,360,32]
   max_bound: [50,3.1415926,2]
@@ -15,7 +15,7 @@ dataset:
   bin_size: [[24,9],[48,18],[96,36]]
 
 val_dataset:
-  root_dir: '/data22/tb5zhh/datasets/SemanticKITTI/sequences'
+  root_dir: '/home/tb5zhh/workspace/datasets/SemanticKITTI/sequences'
   prefix: cylindrical_sample
   spatial_shape: [480,360,32]
   max_bound: [50,3.1415926,2]
@@ -24,7 +24,7 @@ val_dataset:
   bin_size: [[24,9],[48,18],[96,36]]
 
 train_dataloader:
-  batch_size: 1
+  batch_size: 2
   shuffle: True
   num_workers: 8
 
@@ -35,18 +35,18 @@ val_dataloader:
 
 trainer:
   max_epochs: 75
-  gpus: [0]
+  gpus: -1
   check_val_every_n_epoch: 1
-  default_root_dir: 'output'
+  default_root_dir: '/DATA_EDS2/zhangyk2306'
   accelerator: 'ddp'
   sync_batchnorm: True
   accumulate_grad_batches: 2
   num_sanity_val_steps: 10
 
-load_checkpoint: /home/zhangyk2306/scribblekitti/output/scribblekitti_tbw/pretrain_vicreg/20230718-15:29:28/model/4.ckpt
+# load_checkpoint: /home/zhangyk2306/scribblekitti/output/scribblekitti_tbw/pretrain_vicreg/20230718-15:29:28/model/4.ckpt
 
 optimizer:
-  lr: 0.1
+  lr: 0.001
 
 logger:
   project: 'scribblekitti_tbw'
