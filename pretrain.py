@@ -111,7 +111,7 @@ class LightningTrainer(pl.LightningModule):
             feats = [item for sublist in outputs for item in sublist][0::2]
             labels = [item for sublist in outputs for item in sublist][1::2]
             features = torch.cat(feats, dim=0).cpu().numpy()
-            colors = torch.cat(labels, dim=0).cpu().numpy() + 1
+            colors = (torch.cat(labels, dim=0).cpu().numpy() + 1) * 5
             print('Number of features: ', len(features))
             feature_embedded = TSNE(n_components=2, learning_rate='auto', perplexity=3).fit_transform(features)
             dirpath = os.path.join(self.config['base_dir'], 'tsne')
