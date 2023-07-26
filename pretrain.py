@@ -31,6 +31,17 @@ PRETRAIN_LOSS = {
     'EMP': EMPLoss
 }
 
+import matplotlib
+
+# rgb = [[0, 0, 0], [152, 223, 138], [255, 187, 120], [140, 86, 75], [214, 39, 40], [148, 103, 189], [23, 190, 207], [247, 182, 210], [219, 219, 141], [202, 185, 52],
+# [200, 54, 131], [78, 71, 183], [255, 127, 14], [153, 98, 156], [158, 218, 229], [178, 127, 135], [146, 111, 194], [112, 128, 144], [227, 119, 194], [94, 106, 211]]
+rgb = [[0, 0, 0], [174, 199, 232], [152, 223, 138], [31, 119, 180], [255, 187, 120], [188, 189, 34], [140, 86, 75], [255, 152, 150],
+       [214, 39, 40], [197, 176, 213], [148, 103, 189], [196, 156, 148], [23, 190, 207], [178, 76, 76], [247, 182, 210], [66, 188, 102],
+       [219, 219, 141], [140, 57, 197], [202, 185, 52], [51, 176, 203]]
+rgb = np.array(rgb)/255.
+cmp = matplotlib.colors.ListedColormap(rgb,"")
+
+
 class LightningTrainer(pl.LightningModule):
 
     def __init__(self, config):
@@ -92,14 +103,23 @@ class LightningTrainer(pl.LightningModule):
             self.logger.experiment.log({"pretrain_loss": loss.item()})
 
         return loss
+        # pass
 
     def training_epoch_end(self, outputs) -> None:
+        # pass
         dirpath = os.path.join(self.config['base_dir'], 'model')
         os.makedirs(dirpath, exist_ok=True)
         torch.save(self.network.state_dict(), os.path.join(dirpath, f'{self.current_epoch}.ckpt'))
 
     def validation_step(self, batch, batch_idx):
         if self.global_rank == 0:
+            
+            # ckpt_path = "/DATA_EDS2/zhangyk2306/scribblekitti_tbw/pretrain_bt_mec/20230725-10:39:27/model/10.ckpt"
+            # state_dict = torch.load(ckpt_path, map_location='cpu')
+            # self.network.load_state_dict(state_dict)
+            # self.network = self.network.cuda()
+            # # print('loaded checkpoint from ' + ckpt_path)
+            
             rpz, fea, label = batch
             output = self(self.network, fea, rpz)
             return [output.cpu()[::100], label[0].cpu()[::100]]
@@ -111,13 +131,14 @@ class LightningTrainer(pl.LightningModule):
             feats = [item for sublist in outputs for item in sublist][0::2]
             labels = [item for sublist in outputs for item in sublist][1::2]
             features = torch.cat(feats, dim=0).cpu().numpy()
-            colors = (torch.cat(labels, dim=0).cpu().numpy() + 1) * 5
+            colors = torch.cat(labels, dim=0).cpu().numpy() + 1
             print('Number of features: ', len(features))
             feature_embedded = TSNE(n_components=2, learning_rate='auto', perplexity=3).fit_transform(features)
-            dirpath = os.path.join(self.config['base_dir'], 'tsne')
+            dirpath = "mec"
             os.makedirs(dirpath, exist_ok=True)
             dirpath = os.path.join(dirpath, f'{self.current_epoch}.png')
-            plt.scatter(feature_embedded[:, 0], feature_embedded[:, 1], c=colors, s=1)
+            # dirpath = os.path.join(dirpath, '10.png')
+            plt.scatter(feature_embedded[:, 0], feature_embedded[:, 1], c=colors, cmap=cmp, s=1)
             plt.savefig(dirpath, dpi=600)
             plt.cla()
 
