@@ -10,7 +10,7 @@ import torch
 import torch.nn as nn
 import yaml
 from dataloader.semantickitti import SemanticKITTI
-from network.cylinder3d import Cylinder3D, Cylinder3DProject
+from network.cylinder3d import Cylinder3D
 from pytorch_lightning import Trainer
 from pytorch_lightning.loggers import TensorBoardLogger, WandbLogger
 from pytorch_lightning.utilities import rank_zero_only
@@ -31,11 +31,21 @@ class LightningTrainer(pl.LightningModule):
         self.teacher = Cylinder3D(nclasses=self.nclasses, **config['model'])
         if 'load_checkpoint' in self.config:
             ckpt_path = self.config['load_checkpoint']
-            state_dict = torch.load(ckpt_path, map_location='cpu')
-            self.student.load_state_dict(state_dict, strict=False)
-            self.teacher.load_state_dict(state_dict, strict=False)
-            self.student = self.student.cuda()
-            self.teacher = self.teacher.cuda()
+            state_dict = torch.load(ckpt_path)
+            state_copy = state_dict.copy()
+            state_copy["state_dict"]["student"] = {}
+            state_copy["state_dict"]["teacher"] = {}
+            for key in state_dict["state_dict"].keys():
+                if key.startswith("student."):
+                    rear = key[8:]
+                    state_copy["state_dict"]["student"][rear] = state_dict["state_dict"][key]
+                elif key.startswith("teacher."):
+                    rear = key[8:]
+                    state_copy["state_dict"]["teacher"][rear] = state_dict["state_dict"][key]
+            del state_dict
+            state_dict = state_copy
+            self.student.load_state_dict(state_dict["state_dict"]["student"])
+            self.teacher.load_state_dict(state_dict["state_dict"]["teacher"])
             print('loaded checkpoint from ' + ckpt_path)
         self.initialize_teacher()
 
@@ -185,7 +195,14 @@ if __name__ == '__main__':
     init(base_dir)
     config['base_dir'] = base_dir
 
-    wandb_logger = WandbLogger(config=config, save_dir=config['trainer']['default_root_dir'], **config['logger'])
-    tb_logger = TensorBoardLogger(base_dir, name='tb')
-    model = LightningTrainer(config)
-    Trainer(logger=[wandb_logger, tb_logger], callbacks=model.get_model_callback(), **config['trainer']).fit(model)
+    wandb_logger = WandbLogger(config=config,
+                               save_dir=config['trainer']['default_root_dir'],
+                               **config['logger'])
+    if "load_checkpoint" in config:
+        model = LightningTrainer.load_from_checkpoint(config["load_checkpoint"])
+        print('loaded checkpoint from ' + config["load_checkpoint"])
+    else:
+        model = LightningTrainer(config)
+    Trainer(logger=wandb_logger,
+            callbacks=model.get_model_callback(),
+            **config['trainer']).fit(model)

@@ -3,7 +3,7 @@ model:
   hid_feat: 32
 
 dataset:
-  root_dir: '/data22/tb5zhh/datasets/SemanticKITTI/sequences'
+  root_dir: '/home/tb5zhh/workspace/datasets/SemanticKITTI/sequences'
   prefix: cylindrical_mt
   label_directory: scribbles
   spatial_shape: [480,360,32]
@@ -15,7 +15,7 @@ dataset:
   bin_size: [[24,9],[48,18],[96,36]]
 
 val_dataset:
-  root_dir: '/data22/tb5zhh/datasets/SemanticKITTI/sequences'
+  root_dir: '/home/tb5zhh/workspace/datasets/SemanticKITTI/sequences'
   prefix: cylindrical_mt
   label_directory: labels
   spatial_shape: [480,360,32]
@@ -43,11 +43,13 @@ trainer:
   max_epochs: 75
   gpus: -1
   check_val_every_n_epoch: 1
-  default_root_dir: 'output'
+  default_root_dir: "/DATA_EDS2/zhangyk2306"
   accelerator: 'ddp'
   sync_batchnorm: True
   accumulate_grad_batches: 1
   num_sanity_val_steps: 1
+
+# load_checkpoint: "/DATA_EDS2/zhangyk2306/scribblekitti_tbw/pretrain_bt/20230725-08:13:34/model/8.ckpt"
 
 optimizer:
   lr: 0.001
