@@ -32,20 +32,8 @@ class LightningTrainer(pl.LightningModule):
         if 'load_checkpoint' in self.config:
             ckpt_path = self.config['load_checkpoint']
             state_dict = torch.load(ckpt_path)
-            state_copy = state_dict.copy()
-            state_copy["state_dict"]["student"] = {}
-            state_copy["state_dict"]["teacher"] = {}
-            for key in state_dict["state_dict"].keys():
-                if key.startswith("student."):
-                    rear = key[8:]
-                    state_copy["state_dict"]["student"][rear] = state_dict["state_dict"][key]
-                elif key.startswith("teacher."):
-                    rear = key[8:]
-                    state_copy["state_dict"]["teacher"][rear] = state_dict["state_dict"][key]
-            del state_dict
-            state_dict = state_copy
-            self.student.load_state_dict(state_dict["state_dict"]["student"])
-            self.teacher.load_state_dict(state_dict["state_dict"]["teacher"])
+            self.student.load_state_dict(state_dict)
+            self.teacher.load_state_dict(state_dict)
             print('loaded checkpoint from ' + ckpt_path)
         self.initialize_teacher()
 

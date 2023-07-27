@@ -18,6 +18,8 @@ class FeatureGenerator(nn.Module):
                  out_feat=16, downsample=True):
         super().__init__()
         self.downsample = downsample
+        
+        self.pretrain = False
 
         self.net = nn.Sequential(
             nn.BatchNorm1d(in_feat),
@@ -61,16 +63,20 @@ class FeatureGenerator(nn.Module):
             unique_coords = torch_scatter.scatter_max(coords, reverse_indices, dim=0)[0]
         else:
         # Unique coordinates
-            # coords = coords[shuffle, :]
-            pass
-            # unique_coords, unique_inv = torch.unique(coords, return_inverse=True, dim=0)
+            if self.pretrain:
+                pass
+            else:
+                coords = coords[shuffle, :]
+                unique_coords, unique_inv = torch.unique(coords, return_inverse=True, dim=0)
 
         # Generate features
         feats = self.net(feats)
-        # feats = torch_scatter.scatter_max(feats, unique_inv, dim=0)[0]
+        if not self.pretrain:
+            feats = torch_scatter.scatter_max(feats, unique_inv, dim=0)[0]
         feats = self.compress(feats)
-        return feats, coords
-        # return feats, unique_coords.type(torch.int64)
+        if self.pretrain:
+            return feats, coords
+        return feats, unique_coords.type(torch.int64)
 
 class AsymmetricUNet(nn.Module):
     def __init__(self,
@@ -96,8 +102,13 @@ class AsymmetricUNet(nn.Module):
 
         self.logits = spconv.SubMConv3d(4 * hid_feat, nclasses, indice_key="logit", kernel_size=3, stride=1, padding=1,
                                         bias=True)
+        
+        self.dropout = nn.Dropout()
 
     def forward(self, voxel_features, coors, batch_size):
+        # print(voxel_features.shape, "voxel")
+        # print(coors.shape, "coordinates")
+        # print(batch_size, "batch_size")
         ret = spconv.SparseConvTensor(voxel_features, coors.int(), self.spatial_shape, batch_size)
         ret = self.contextBlock(ret)
         
@@ -113,8 +124,13 @@ class AsymmetricUNet(nn.Module):
 
         up0e = self.reconBlock(up1e)
         up0e.features = torch.cat((up0e.features, up1e.features), 1)
+        
+        up0e.features = self.dropout(up0e.features)
+        # print(up0e.features.shape)
+        # print("up0e end")
         logits = self.logits(up0e)
         y = logits.dense()
+        # print("y shape", y.shape)
         return y, up0e
 
 
