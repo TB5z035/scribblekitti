@@ -30,6 +30,12 @@ class LESS_Loss(nn.Module):
         # 注意这项是减的
         # student_output = F.softmax(student_output,dim=1)
         weak_label = LESS_labels[label_group==3]
+        # weak_label[:,15] = 1
+        # weak_label[:,11] = 1
+        # weak_label[:,17] = 1
+        # weak_label[:,18] = 1
+        # weak_label[:,9] = 1
+
         student_output_weak = student_output[label_group==3]
         student_output_weak[weak_label==0] = 0
         student_output_weak[:,0] = 0 
@@ -38,4 +44,4 @@ class LESS_Loss(nn.Module):
         # 最后求和之后，注意除以的是非0的shape，
         # return (-loss_weak + loss_propogated + loss_sparse)/student_output[label_group!=0].shape[0]
         # return (-loss_weak + loss_propogated)/student_output[label_group!=0].shape[0]
-        return (-loss_weak + loss_propogated)
+        return  -loss_weak ,loss_propogated

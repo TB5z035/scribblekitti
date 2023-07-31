@@ -23,6 +23,7 @@ from utils.consistency_loss import PartialConsistencyLoss
 from utils.evaluation import compute_iou
 from utils.lovasz import lovasz_softmax
 from utils.LESS_loss import LESS_Loss
+from collections import OrderedDict
 
 
 class LightningTrainer(pl.LightningModule):
@@ -34,11 +35,20 @@ class LightningTrainer(pl.LightningModule):
         self.teacher = Cylinder3D(nclasses=self.nclasses, **config['model'])
         # self.student = torch.nn.DataParallel(self.student, device_ids=[0, 1]).cuda()
         # self.teacher = torch.nn.DataParallel(self.student, device_ids=[0, 1]).cuda()
-        if 'load_checkpoint' in self.config['trainer']:
-            ckpt_path = self.config['trainer']['load_checkpoint']
+        if 'load_checkpoint' in self.config:
+            ckpt_path = self.config['load_checkpoint']
             state_dict = torch.load(ckpt_path)
-            self.student.load_state_dict(state_dict,strict=False)
-            self.teacher.load_state_dict(state_dict,strict=False)
+            state_dict_stu = OrderedDict()
+            state_dict_teacher = OrderedDict()
+            for k,v in state_dict['state_dict'].items():
+                if k.split('.')[0] == 'student':
+                    state_dict_stu[k.split('student.')[1]] = v
+                else:
+                    state_dict_teacher[k.split('teacher.')[1]] = v
+            state_dict['state_dict'] = state_dict_stu
+            self.student.load_state_dict(state_dict_stu)
+            state_dict['state_dict'] = state_dict_teacher
+            self.teacher.load_state_dict(state_dict_teacher)
             print('loaded checkpoint from ' + ckpt_path)
         self.initialize_teacher()
 
@@ -74,14 +84,18 @@ class LightningTrainer(pl.LightningModule):
         teacher_output = self(self.teacher, teacher_fea, teacher_rpz, batch_size)
         cl_loss = self.loss_cl(student_output, teacher_output, student_label)
         ls_loss = self.loss_ls(student_output.softmax(1), student_label, ignore=0)
-        loss_LESS = self.less_loss(student_output.softmax(1),student_label,LESS_labels,label_group)
-        loss = cl_loss + 2 * ls_loss + loss_LESS
+        loss_weak,loss_propogated = self.less_loss(student_output.softmax(1),student_label,LESS_labels,label_group)
+        loss = 0.5 * cl_loss + 2 * ls_loss + loss_weak + loss_propogated
+        # loss = cl_loss + 2 * ls_loss + loss_weak 
+        # loss = cl_loss + 2 * ls_loss + 2 * loss_propogated 
+
         # sch = self.lr_schedulers()
         # if self.trainer.is_last_batch and (self.trainer.current_epoch + 1) % 1 == 0:
             # sch.step()
         self.log('cl_loss', cl_loss, on_epoch=True, prog_bar=True)
         self.log('ls_loss', ls_loss, on_epoch=True, prog_bar=True)
-        self.log('LESS_loss',loss_LESS,on_epoch=True, prog_bar=True)
+        self.log('weak_loss',loss_weak,on_epoch=True, prog_bar=True)
+        self.log('propogated_loss',loss_propogated,on_epoch=True, prog_bar=True)
         self.log('train_loss', loss, on_epoch=True, prog_bar=True)
         return loss
 
@@ -125,8 +139,9 @@ class LightningTrainer(pl.LightningModule):
 
     def configure_optimizers(self):
         optimizer = Adam(self.student.parameters(), **self.config['optimizer'])
-        scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.9)
+        scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.8)
         return [optimizer],[scheduler]
+        # return [optimizer]
 
     def setup(self, stage):
         self.train_dataset = SemanticKITTI(split='train', config=self.config['dataset'])

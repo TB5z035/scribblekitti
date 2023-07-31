@@ -15,6 +15,7 @@ class LESS():
         self.config = config
         self.split = split
         self.label_directory = label_directory
+        self.true_directory = 'labels'
         self.target_directory = config_LESS['target_directory']
         self.t = config_LESS['RANSAC']['scans_per_subsequence']
         self.l_grid = config_LESS['RANSAC']['l_grid']
@@ -28,6 +29,7 @@ class LESS():
         self.save_file_number = config_LESS['save_file_number']
         self.seq_to_process = int(args.solve_seq)
         self.start_number_in_one_seq = config_LESS['start_number_in_one_seq']
+        self.print_detail = config_LESS['print_detail']
 
     def map_label(self,label, map_dict):
         maxkey = 0
@@ -68,22 +70,26 @@ class LESS():
             self.seq_len = len(lidar_path)
             self.scans_cnt = 0
             label_dir = os.path.join(root_dir, seq, self.label_directory)
+            true_label_dir = os.path.join(root_dir,seq,self.true_directory)
             label_path = [os.path.join(dp, f) for dp, dn, fn in os.walk(os.path.expanduser(label_dir)) for f in fn if f.endswith('.label')]
+            true_label_path = [os.path.join(dp, f) for dp, dn, fn in os.walk(os.path.expanduser(true_label_dir)) for f in fn if f.endswith('.label')]
             # assert (len(lidar_path) == len(label_path))
             # label_paths.extend(label_path)
             pose_path = os.path.join(root_dir,seq,'poses.txt')
-            self.fusion(lidar_path=lidar_path,pose_path=pose_path,label_path=label_path,t=self.t,l_grid=self.l_grid,dist=self.dist,iter_max=self.iter_max,percent=self.percent,d=self.d,seq=seq)
+            self.fusion(lidar_path=lidar_path,pose_path=pose_path,label_path=label_path,t=self.t,l_grid=self.l_grid,dist=self.dist,iter_max=self.iter_max,percent=self.percent,d=self.d,seq=seq,true_label_path=true_label_path)
         
         return 1
     
 
     # t represent t scans to be combined with
     # l_grid means we use l*l grid to run RANSAC
-    def fusion(self,lidar_path,pose_path,label_path,t,l_grid,dist,iter_max,percent,d,seq):     
+    def fusion(self,lidar_path,pose_path,label_path,t,l_grid,dist,iter_max,percent,d,seq,true_label_path):     
         pose_file = open(pose_path) 
         lidar_path.sort()
         label_path.sort()
+        true_label_path.sort()
         cnt = 0
+        # label_file_exist = os.listdir(label_path[0].replace('scribbles',self.target_directory+'/group').split('/000000.label')[0])
         label_file_exist = os.listdir(label_path[0].replace('scribbles',self.target_directory+'/group').split('/000000.label')[0])
         label_file_exist.sort()
         if not self.Save:
@@ -91,11 +97,12 @@ class LESS():
                 len_file_exist = self.start_number_in_one_seq
             else:
                 len_file_exist = len(label_file_exist)
+                pass
         else:
             len_file_exist = self.save_file_number
         # len_file_exist = 4000
 
-        for lidar_file,label_file in zip(lidar_path,label_path):
+        for lidar_file,label_file,true_label_file in zip(lidar_path,label_path,true_label_path):
             
             # pass the existed files
             if self.scans_cnt < len_file_exist:
@@ -109,6 +116,7 @@ class LESS():
                 file_len_list = []
                 lidar_xyz_unified = np.array([[0,0,0]],dtype=np.float32)
                 label_unified = np.array([[0]])
+                true_label_unified = np.array([[0]])
 
             # read the pose and aggregate scans
             pose = pose_file.readline()
@@ -124,6 +132,9 @@ class LESS():
             label = np.fromfile(label_file, dtype=np.int32)
             label = label.reshape((-1)) & 0xFFFF
             label = self.map_label(label, self.config['learning_map'])
+            true_label = np.fromfile(true_label_file, dtype=np.int32)
+            true_label = true_label.reshape((-1)) & 0xFFFF
+            true_label = self.map_label(true_label, self.config['learning_map'])
             # Matrix_RT = np.array([r11,r12,r13,t11],[r21,r22,r23,t12],[r31,r32,r33,t13],[0,0,0,1])
             
             # lidar_x = lidar_x*r11 +r12*lidar_y+r13*lidar_z + t14
@@ -137,6 +148,8 @@ class LESS():
             lidar_xyz = np.concatenate((lidar_x,lidar_y,lidar_z),axis=1)
             lidar_xyz_unified = np.concatenate((lidar_xyz_unified,lidar_xyz),axis=0)        # OK
             label_unified = np.concatenate((label_unified,label),axis=0)        # OK
+            true_label_unified = np.concatenate((true_label_unified,np.expand_dims(true_label,axis=1)),axis=0)        # OK
+
             file_list.append(label_file.split(self.label_directory+'/')[1])
             file_len_list.append(len(lidar_xyz_unified)-1)
 
@@ -147,7 +160,7 @@ class LESS():
                 self.tic = time.time()
                 lidar_xyz_unified = lidar_xyz_unified[1:,:]     # get all points in one axis
                 label_unified = label_unified[1:,:]
-
+                true_label_unified = true_label_unified[1:,:]
                 # For visualization, save Origin points
                 if self.Save:
                     # lidar_xyz_unified.tofile(str(lidar_xyz_unified.shape[0])+'_Origin.bin')
@@ -160,19 +173,31 @@ class LESS():
                 cnt_OOM = 0
                 lidar_xyz_unified_copy = lidar_xyz_unified
                 dist = self.dist
+                # to save all points with color
+                # Points_with_rgb = np.zeros([lidar_xyz_unified.shape[0],6])
+                # for i in range(0,20):
+                #     Points_with_rgb[np.where(label==i)[0],3:6] = self.config['color_map'][i]
+                # Points_with_rgb[:,0:3] = lidar_xyz_unified
+                # self.save_matrix_to_txt(Points_with_rgb,'all_points_with_ground_truth.txt')
                 while flag_points_less_than_OOM:
                     lidar_xyz_unified = lidar_xyz_unified_copy.copy()
-
+                    self.cnt_all_ground_block = 0
+                    self.punish_error = 0
+                    self.propogated_error = 0 
+                    self.punish_error_cluster = 0
+                    self.propogated_error_cluster = 0 
+                    self.cnt_all_group_clutser = 0
                     # run RANSAC for each block
                     for i in range(int(np.floor(x_min/l_grid)),int(np.ceil(x_max/l_grid))):
                         for j in range(int(np.floor(y_min/l_grid)),int(np.ceil(y_max/l_grid))):
+                            self.cnt_all_ground_block += 1
                             grid_x_min = i*l_grid
                             grid_x_max = (i+1)*l_grid
                             grid_y_min = j*l_grid
                             grid_y_max = (j+1)*l_grid
                             indice = np.logical_and(np.logical_and(lidar_xyz_unified[:,1]>grid_y_min ,lidar_xyz_unified[:,1]<grid_y_max),np.logical_and(lidar_xyz_unified[:,0]>grid_x_min ,lidar_xyz_unified[:,0]<grid_x_max ) ) 
                             if np.where(indice==True)[0].shape[0] >= 3:
-                                lidar_xyz_unified[indice],label_save[indice],label_class[indice] = self.RANSAC(lidar_xyz_unified=lidar_xyz_unified[indice],label_save=label_save[indice],label_class=label_class[indice],label_unified=label_unified[indice],dist=dist,iter_max=iter_max,percent=percent)
+                                lidar_xyz_unified[indice],label_save[indice],label_class[indice] = self.RANSAC(lidar_xyz_unified=lidar_xyz_unified[indice],label_save=label_save[indice],label_class=label_class[indice],label_unified=label_unified[indice],true_label_unified=true_label_unified[indice],dist=dist,iter_max=iter_max,percent=percent)
                     
                     # avoid OOM
                     if len(np.unique(np.where(lidar_xyz_unified!=np.array([0,0,0])[0]))) < self.OOM_bar:
@@ -185,8 +210,9 @@ class LESS():
                         print('points shape is (',len(np.unique(np.where(lidar_xyz_unified!=np.array([0,0,0])[0]))),', 3), May cause OOM',flush=True)
                 
                 cnt = 0
-                self.cluster(lidar_xyz_unified=lidar_xyz_unified,labels=label_unified,label_save=label_save,label_class=label_class,file_list=file_list,file_len_list=file_len_list,d=d,seq=seq)
-                
+                self.cluster(lidar_xyz_unified=lidar_xyz_unified,labels=label_unified,true_label_unified=true_label_unified,label_save=label_save,label_class=label_class,file_list=file_list,file_len_list=file_len_list,d=d,seq=seq)
+                print('Ground: propogated error is',self.propogated_error,'/',self.cnt_all_ground_block,'; weak error is',self.punish_error,'/',self.cnt_all_ground_block)
+                print('Cluster: propogated error is',self.propogated_error_cluster,'/',self.cnt_all_group_clutser,'; weak error is',self.punish_error_cluster,'/',self.cnt_all_group_clutser)                
                 # if only save points, don't need to process next subsequence 
                 if self.Save:
                     exit()
@@ -215,17 +241,23 @@ class LESS():
                 dist = self.dist
                 while flag_points_less_than_OOM:
                     lidar_xyz_unified = lidar_xyz_unified_copy.copy()
-
+                    self.cnt_all_ground_block = 0
+                    self.punish_error = 0
+                    self.propogated_error = 0 
+                    self.punish_error_cluster = 0
+                    self.propogated_error_cluster = 0 
+                    self.cnt_all_group_clutser = 0
                     # run RANSAC for each block
                     for i in range(int(np.round(x_min/l_grid)),int(np.round(x_max/l_grid))):
                         for j in range(int(np.round(y_min/l_grid)),int(np.round(y_max/l_grid))):
+                            self.cnt_all_ground_block += 1
                             grid_x_min = i*l_grid
                             grid_x_max = (i+1)*l_grid
                             grid_y_min = j*l_grid
                             grid_y_max = (j+1)*l_grid
                             indice = np.logical_and(np.logical_and(lidar_xyz_unified[:,1]>grid_y_min ,lidar_xyz_unified[:,1]<grid_y_max),np.logical_and(lidar_xyz_unified[:,0]>grid_x_min ,lidar_xyz_unified[:,0]<grid_x_max ) ) 
                             if np.where(indice==True)[0].shape[0] >= 3:
-                                lidar_xyz_unified[indice],label_save[indice],label_class[indice] = self.RANSAC(lidar_xyz_unified=lidar_xyz_unified[indice],label_save=label_save[indice],label_class=label_class[indice],label_unified=label_unified[indice],dist=dist,iter_max=iter_max,percent=percent)
+                                lidar_xyz_unified[indice],label_save[indice],label_class[indice] = self.RANSAC(lidar_xyz_unified=lidar_xyz_unified[indice],label_save=label_save[indice],label_class=label_class[indice],label_unified=label_unified[indice],true_label_unified=true_label_unified[indice],dist=dist,iter_max=iter_max,percent=percent)
                     
                     # avoid OOM
                     if len(np.unique(np.where(lidar_xyz_unified!=np.array([0,0,0])[0]))) < self.OOM_bar:
@@ -238,14 +270,15 @@ class LESS():
                         print('points shape is (',len(np.unique(np.where(lidar_xyz_unified!=np.array([0,0,0])[0]))),', 3), May cause OOM',flush=True)
                 
                 cnt = 0
-                self.cluster(lidar_xyz_unified=lidar_xyz_unified,labels=label_unified,label_save=label_save,label_class=label_class,file_list=file_list,file_len_list=file_len_list,d=d,seq=seq)
-                
+                self.cluster(lidar_xyz_unified=lidar_xyz_unified,labels=label_unified,true_label_unified=true_label_unified,label_save=label_save,label_class=label_class,file_list=file_list,file_len_list=file_len_list,d=d,seq=seq)
+                print('Ground: propogated error is',self.propogated_error,'/',self.cnt_all_ground_block,'; weak error is',self.punish_error,'/',self.cnt_all_ground_block)
+                print('Cluster: propogated error is',self.propogated_error_cluster,'/',self.cnt_all_group_clutser,'; weak error is',self.punish_error_cluster,'/',self.cnt_all_group_clutser)
                 # if only save points, don't need to process next subsequence 
                 if self.Save:
                     exit()
 
 
-    def RANSAC(self,lidar_xyz_unified,label_save,dist,label_class,label_unified,iter_max,percent):
+    def RANSAC(self,lidar_xyz_unified,label_save,dist,label_class,label_unified,true_label_unified,iter_max,percent):
         iter = 0
         lidar_ground_max = [np.array([0])]
         while 1:
@@ -275,8 +308,14 @@ class LESS():
             if lidar_ground_max[0].shape[0] >= percent*lidar_xyz_unified.shape[0]:
                 # get the ground points' labels
                 labels_scribble = label_unified[lidar_ground_max[0],:]
+                labels_true = true_label_unified[lidar_ground_max[0],:]
                 # get their unique labels
+                label_true_unique = np.unique(labels_true)
                 labels_unique = np.unique(labels_scribble)
+                if not labels_unique.__len__() == 1 & (labels_unique==0)[0]:
+                    labels_unique = np.append(labels_unique,[9,11,15,17,18])
+                    labels_unique = np.unique(labels_unique)
+                    pass
                 # create one hot encode, and let the unique labels be the 1
                 label_add = np.zeros((1,20))
                 label_add[0,labels_unique]=1
@@ -292,13 +331,26 @@ class LESS():
                             # this ground is propogated
                             # Hard to reach, but possible
                             label_class[lidar_ground_max[0]] = 2
+                            max_label_in_ground_truth = np.argmax(np.bincount(labels_true[labels_true!=0]))
+                            if labels_unique[0] != max_label_in_ground_truth:
+                                self.propogated_error += 1
                 # then, it can be propogated and weak, which propogated is just appear when len is 2 and label is something and 0(no label).
                 # So if len is 2 and one is 0, it must be propogated
                 elif (len(labels_unique) == 2) & (labels_unique[0] == 0):
                     # this group is propogated
                     label_class[lidar_ground_max[0]] = 2
+                    max_label_in_ground_truth = np.argmax(np.bincount(labels_true[labels_true!=0]))
+                    if labels_unique[1] != max_label_in_ground_truth:
+                        self.propogated_error += 1
+                        if self.print_detail:
+                            print('Ground: propogated result is',labels_unique,'while the max of ground truth is',max_label_in_ground_truth)
                 else:
                     # this group is weak
+                    if (np.unique(labels_unique[labels_unique!=0]==label_true_unique).shape[0] == 1):
+                            if (np.unique(labels_unique[labels_unique!=0]==label_true_unique) == False):       # weak与ground truth有不一样的
+                                self.punish_error +=1 
+                                if self.print_detail:
+                                    print('Ground: weak labels is',labels_unique[labels_unique!=0],'while ground truth is',label_true_unique)
                     label_class[lidar_ground_max[0]] = 3
                 # let the ground point equal to (0,0,0)
                 lidar_xyz_unified[lidar_ground_max[0],:] = 0
@@ -307,8 +359,14 @@ class LESS():
                 # get the ground points' labels
                 labels_scribble = label_unified[lidar_ground_max[0],:]
                 # get their unique labels
+                labels_true = true_label_unified[lidar_ground_max[0],:]
+                label_true_unique = np.unique(labels_true)
                 labels_unique = np.unique(labels_scribble)
                 # create one hot encode, and let the unique labels be the 1
+                if not labels_unique.__len__() == 1 & (labels_unique==0)[0]:
+                    labels_unique = np.append(labels_unique,[9,11,15,17,18])
+                    labels_unique = np.unique(labels_unique)
+                    pass
                 label_add = np.zeros((1,20))
                 label_add[0,labels_unique]=1
                 # let this row be the label_add
@@ -322,14 +380,30 @@ class LESS():
                         else:
                             # this ground is propogated
                             # Hard to reach, but possible
+                            max_label_in_ground_truth = np.argmax(np.bincount(labels_true[labels_true!=0]))
+                            if labels_unique[0] != max_label_in_ground_truth:
+                                self.propogated_error += 1
+                                if self.print_detail:
+                                    print('Ground: propogated result is',labels_unique,'while the max of ground truth is',max_label_in_ground_truth)
                             label_class[lidar_ground_max[0]] = 2
                 # then, it can be propogated and weak, which propogated is just appear when len is 2 and label is something and 0(no label).
                 # So if len is 2 and one is 0, it must be propogated
                 elif (len(labels_unique) == 2) & (labels_unique[0] == 0):
                     # this group is propogated
+                    max_label_in_ground_truth = np.argmax(np.bincount(labels_true[labels_true!=0]))
+                    if labels_unique[1] != max_label_in_ground_truth:
+                        self.propogated_error += 1
+                        if self.print_detail:
+                            print('Ground: propogated result is',labels_unique,'while the max of ground truth is',max_label_in_ground_truth)
                     label_class[lidar_ground_max[0]] = 2
                 else:
                     # this group is weak
+                    # this group is weak
+                    if (np.unique(labels_unique[labels_unique!=0]==label_true_unique).shape[0] == 1):
+                            if (np.unique(labels_unique[labels_unique!=0]==label_true_unique) == False):       # weak与ground truth有不一样的
+                                self.punish_error +=1
+                                if self.print_detail: 
+                                    print('Ground: weak labels is',labels_unique[labels_unique!=0],'while ground truth is',label_true_unique)
                     label_class[lidar_ground_max[0]] = 3
                 # let the ground point equal to (0,0,0)
                 lidar_xyz_unified[lidar_ground_max[0],:] = 0
@@ -337,7 +411,7 @@ class LESS():
         return lidar_xyz_unified,label_save,label_class
 
 
-    def cluster(self,lidar_xyz_unified,labels,label_save,label_class,file_list,file_len_list,d,seq):
+    def cluster(self,lidar_xyz_unified,labels,true_label_unified,label_save,label_class,file_list,file_len_list,d,seq):
         # varible which restores this label is nothing, weak, propogated or scribble
         # tips: nothing and ground(which is not reduce by last step) will not be used in 
         # noting, scribbles, propogated, weak
@@ -360,7 +434,7 @@ class LESS():
         adjacency_sparse = csr_matrix(adjacency_matrix)
         # Compute the connected components using the sparse matrix
         n_components, groups = connected_components(adjacency_sparse)
-        
+        self.cnt_all_group_clutser = groups.max() + 1 
         # save results
         if self.Save:
             self.save_matrix_to_txt(points,'points_without_ground.txt')
@@ -373,6 +447,8 @@ class LESS():
             index_in_origin_point_cloud = points_index[np.where(groups==i)]
             labels_scribble = labels[index_in_origin_point_cloud]
             labels_unique = np.unique(labels_scribble)
+            labels_true = true_label_unified[index_in_origin_point_cloud]
+            label_true_unique = np.unique(labels_true)
             label_add = np.zeros((1,20))
             label_add[0,labels_unique]=1
             # divide this group into weak,propogated or nothing(when no label in this group)
@@ -384,14 +460,28 @@ class LESS():
                 else:
                     # this group is propogated
                     # Hard to reach, but possible
+                    max_label_in_ground_truth = np.argmax(np.bincount(labels_true[labels_true!=0]))
+                    if labels_unique[0] != max_label_in_ground_truth:
+                        self.propogated_error_cluster += 1
+                        if self.print_detail:
+                            print('Cluster: propogated result is',labels_unique,'while the max of ground truth is',max_label_in_ground_truth)
                     label_class[index_in_origin_point_cloud] = 2
             # then, it can be propogated and weak, which propogated is just appear when len is 2 and label is something and 0(no label).
             # So if len is 2 and one is 0, it must be propogated
             elif (len(labels_unique) == 2) & (labels_unique[0] == 0):
                 # this group is propogated
+                max_label_in_ground_truth = np.argmax(np.bincount(labels_true[labels_true!=0]))
+                if labels_unique[1] != max_label_in_ground_truth:
+                    self.propogated_error_cluster += 1
+                    if self.print_detail:
+                        print('Cluster: propogated result is',labels_unique,'while the max of ground truth is',max_label_in_ground_truth)
                 label_class[index_in_origin_point_cloud] = 2
             else:
                 # this group is weak
+                if not ((np.unique(labels_unique[labels_unique!=0]==label_true_unique).shape[0] == 1) & np.unique(labels_unique[labels_unique!=0]==label_true_unique) ==True):       # weak与ground truth有不一样的
+                    self.punish_error_cluster +=1 
+                    if self.print_detail:
+                        print('Cluster: weak labels is',labels_unique[labels_unique!=0],'while ground truth is',label_true_unique)
                 label_class[index_in_origin_point_cloud] = 3
             # save the label by one hot encode.
             label_save[index_in_origin_point_cloud,:] = label_add

@@ -13,7 +13,7 @@ dataset:
     student: ['rotate', 'flip', 'scale', 'noise']
     teacher: ['rotate', 'flip']
   bin_size: [[24,9],[48,18],[96,36]]
-  LESS_target_diretory: 'LESS_230720_single_scan'
+  LESS_target_diretory: 'LESS_230730_weak_ground_fixed'
 
 val_dataset:
   root_dir: '/data22/tb5zhh/datasets/SemanticKITTI/sequences'
@@ -69,7 +69,7 @@ test_dataloader:
   num_workers: 4
 
 trainer:
-  max_epochs: 25
+  max_epochs: 150
   gpus: -1
   check_val_every_n_epoch: 1
   default_root_dir: 'output'
@@ -77,11 +77,13 @@ trainer:
   sync_batchnorm: True
   accumulate_grad_batches: 1
   num_sanity_val_steps: 1
-  # load_checkpoint: '/home/yujc/scribble/scribblekitti/1.ckpt'
+# load_checkpoint: '/home/yujc/scribble/scribblekitti/output/scribblekitti_yjc/cylinder3d_mt_LESS/20230727-09:37:07/ckpt/epoch=5-val_teacher_miou=55.46.ckpt'
+# load_checkpoint: '/home/yujc/scribble/scribblekitti/output/scribblekitti_yjc/cylinder3d_mt_LESS/20230727-15:51:10/ckpt/epoch=3-val_teacher_miou=55.09.ckpt'
+# load_checkpoint: '/home/yujc/scribble/scribblekitti/output/scribblekitti_LESS/cylinder3d_mt_LESS/20230730-21:15:54/ckpt/epoch=13-val_teacher_miou=58.99.ckpt'
 
 optimizer:
   lr: 0.001
 
 logger:
-  project: 'scribblekitti_yjc'
-  name: 'LESS'
+  project: 'scribblekitti_LESS'
+  name: 'weak_label_add_in_train'
