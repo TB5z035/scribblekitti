@@ -69,8 +69,8 @@ test_dataloader:
   num_workers: 4
 
 trainer:
-  max_epochs: 150
-  gpus: -1
+  max_epochs: 75
+  gpus: [1]
   check_val_every_n_epoch: 1
   default_root_dir: 'output'
   accelerator: 'ddp'
@@ -80,9 +80,10 @@ trainer:
 # load_checkpoint: '/home/yujc/scribble/scribblekitti/output/scribblekitti_yjc/cylinder3d_mt_LESS/20230727-09:37:07/ckpt/epoch=5-val_teacher_miou=55.46.ckpt'
 # load_checkpoint: '/home/yujc/scribble/scribblekitti/output/scribblekitti_yjc/cylinder3d_mt_LESS/20230727-15:51:10/ckpt/epoch=3-val_teacher_miou=55.09.ckpt'
 # load_checkpoint: '/home/yujc/scribble/scribblekitti/output/scribblekitti_LESS/cylinder3d_mt_LESS/20230730-21:15:54/ckpt/epoch=13-val_teacher_miou=58.99.ckpt'
+load_checkpoint: '/home/yujc/scribble/scribblekitti/output/scribblekitti_LESS/cylinder3d_mt_LESS/20230802-11:31:51/ckpt/epoch=4-val_teacher_miou=57.18.ckpt'
 
 optimizer:
-  lr: 0.001
+  lr: 0.000024
 
 logger:
   project: 'scribblekitti_LESS'

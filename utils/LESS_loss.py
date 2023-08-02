@@ -39,9 +39,10 @@ class LESS_Loss(nn.Module):
         student_output_weak = student_output[label_group==3]
         student_output_weak[weak_label==0] = 0
         student_output_weak[:,0] = 0 
-        loss_weak = student_output_weak.sum(1).log().sum(0)/student_output_weak.shape[0]
+        # loss_weak = (torch.sum(torch.log(torch.sum(student_output_weak,dim=1)),dim=0))/student_output_weak.shape[0]
+        loss_weak = (torch.log(torch.sum(student_output_weak,dim=1)).sum())/student_output_weak.shape[0]
 
         # 最后求和之后，注意除以的是非0的shape，
         # return (-loss_weak + loss_propogated + loss_sparse)/student_output[label_group!=0].shape[0]
         # return (-loss_weak + loss_propogated)/student_output[label_group!=0].shape[0]
-        return  -loss_weak ,loss_propogated
+        return  -loss_weak , loss_propogated

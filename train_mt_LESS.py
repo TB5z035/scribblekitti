@@ -86,6 +86,7 @@ class LightningTrainer(pl.LightningModule):
         ls_loss = self.loss_ls(student_output.softmax(1), student_label, ignore=0)
         loss_weak,loss_propogated = self.less_loss(student_output.softmax(1),student_label,LESS_labels,label_group)
         loss = 0.5 * cl_loss + 2 * ls_loss + loss_weak + loss_propogated
+        # loss = loss.sum()
         # loss = cl_loss + 2 * ls_loss + loss_weak 
         # loss = cl_loss + 2 * ls_loss + 2 * loss_propogated 
 
@@ -97,7 +98,8 @@ class LightningTrainer(pl.LightningModule):
         self.log('weak_loss',loss_weak,on_epoch=True, prog_bar=True)
         self.log('propogated_loss',loss_propogated,on_epoch=True, prog_bar=True)
         self.log('train_loss', loss, on_epoch=True, prog_bar=True)
-        return loss
+        # print('cl_loss',cl_loss,'ls_loss',ls_loss,'weak_loss',loss_weak,flush=True)
+        return {'loss': loss}
 
     def validation_step(self, batch, batch_idx):
         student_rpz, student_fea, student_label = batch['student']
@@ -112,6 +114,7 @@ class LightningTrainer(pl.LightningModule):
 
         loss = self.loss_cl(student_output, teacher_output, student_label) + \
                self.loss_ls(student_output.softmax(1), student_label, ignore=0)
+        loss = loss.sum()
 
         self.log('val_loss', loss, on_epoch=True, prog_bar=True)
         mask = (teacher_label!=0).squeeze()
@@ -139,7 +142,7 @@ class LightningTrainer(pl.LightningModule):
 
     def configure_optimizers(self):
         optimizer = Adam(self.student.parameters(), **self.config['optimizer'])
-        scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.8)
+        scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.9)
         return [optimizer],[scheduler]
         # return [optimizer]
 
@@ -179,8 +182,16 @@ class LightningTrainer(pl.LightningModule):
         checkpoint = pl.callbacks.ModelCheckpoint(dirpath=dirpath, filename='{epoch}-{val_teacher_miou:.2f}',
                                                   monitor='val_teacher_miou', mode='max', save_top_k=3)
         return [checkpoint]
-
-
+    def training_step_end(self, outputs):
+ 
+        if outputs is None:
+            return None
+        if outputs['loss'] is None:
+            return None
+ 
+        return {'epoch': self.current_epoch,
+                'loss': outputs['loss'].mean()}
+    
 if __name__=='__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--config_path', default='config/train/cylinder3d/cylinder3d_mt_LESS.yaml')
