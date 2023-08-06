@@ -1,7 +1,7 @@
 #!/bin/bash
 
 
-To_Delete=LESS_230719
+To_Delete=LESS_230804_weak_ground_fixed
 
 for  ((i=0;i<10;i++))
 do

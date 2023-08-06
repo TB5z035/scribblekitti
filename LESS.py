@@ -30,6 +30,7 @@ class LESS():
         self.seq_to_process = int(args.solve_seq)
         self.start_number_in_one_seq = config_LESS['start_number_in_one_seq']
         self.print_detail = config_LESS['print_detail']
+        self.add_list = config_LESS['add_list']
 
     def map_label(self,label, map_dict):
         maxkey = 0
@@ -183,6 +184,8 @@ class LESS():
                     lidar_xyz_unified = lidar_xyz_unified_copy.copy()
                     self.cnt_all_ground_block = 0
                     self.punish_error = 0
+                    self.punish_error = 0
+
                     self.propogated_error = 0 
                     self.punish_error_cluster = 0
                     self.propogated_error_cluster = 0 
@@ -271,8 +274,8 @@ class LESS():
                 
                 cnt = 0
                 self.cluster(lidar_xyz_unified=lidar_xyz_unified,labels=label_unified,true_label_unified=true_label_unified,label_save=label_save,label_class=label_class,file_list=file_list,file_len_list=file_len_list,d=d,seq=seq)
-                print('Ground: propogated error is',self.propogated_error,'/',self.cnt_all_ground_block,'; weak error is',self.punish_error,'/',self.cnt_all_ground_block)
-                print('Cluster: propogated error is',self.propogated_error_cluster,'/',self.cnt_all_group_clutser,'; weak error is',self.punish_error_cluster,'/',self.cnt_all_group_clutser)
+                print('Ground: propogated error is',self.propogated_error,'/',self.cnt_all_ground_block,'; weak error is',self.punish_error,'/',self.cnt_all_ground_block,flush=True)
+                print('Cluster: propogated error is',self.propogated_error_cluster,'/',self.cnt_all_group_clutser,'; weak error is',self.punish_error_cluster,'/',self.cnt_all_group_clutser,flush=True)
                 # if only save points, don't need to process next subsequence 
                 if self.Save:
                     exit()
@@ -313,7 +316,7 @@ class LESS():
                 label_true_unique = np.unique(labels_true)
                 labels_unique = np.unique(labels_scribble)
                 if not labels_unique.__len__() == 1 & (labels_unique==0)[0]:
-                    labels_unique = np.append(labels_unique,[9,11,15,17,18])
+                    labels_unique = np.append(labels_unique,self.add_list)
                     labels_unique = np.unique(labels_unique)
                     pass
                 # create one hot encode, and let the unique labels be the 1
@@ -343,14 +346,18 @@ class LESS():
                     if labels_unique[1] != max_label_in_ground_truth:
                         self.propogated_error += 1
                         if self.print_detail:
-                            print('Ground: propogated result is',labels_unique,'while the max of ground truth is',max_label_in_ground_truth)
+                            print('Ground: propogated result is',labels_unique,'while the max of ground truth is',max_label_in_ground_truth,flush=True)
                 else:
                     # this group is weak
-                    if (np.unique(labels_unique[labels_unique!=0]==label_true_unique).shape[0] == 1):
-                            if (np.unique(labels_unique[labels_unique!=0]==label_true_unique) == False):       # weak与ground truth有不一样的
-                                self.punish_error +=1 
-                                if self.print_detail:
-                                    print('Ground: weak labels is',labels_unique[labels_unique!=0],'while ground truth is',label_true_unique)
+                    if not (np.unique(np.isin(label_true_unique,labels_unique)).shape[0]==1):
+                        self.punish_error +=1 
+                        if self.print_detail:
+                            print('Ground: weak labels is',labels_unique[labels_unique!=0],'while ground truth is',label_true_unique,flush=True)
+                    # if (np.unique(labels_unique[labels_unique!=0]==label_true_unique).shape[0] == 1):
+                    #         if (np.unique(labels_unique[labels_unique!=0]==label_true_unique) == False):       # weak与ground truth有不一样的
+                    #             self.punish_error +=1 
+                    #             if self.print_detail:
+                    #                 print('Ground: weak labels is',labels_unique[labels_unique!=0],'while ground truth is',label_true_unique)
                     label_class[lidar_ground_max[0]] = 3
                 # let the ground point equal to (0,0,0)
                 lidar_xyz_unified[lidar_ground_max[0],:] = 0
@@ -364,7 +371,7 @@ class LESS():
                 labels_unique = np.unique(labels_scribble)
                 # create one hot encode, and let the unique labels be the 1
                 if not labels_unique.__len__() == 1 & (labels_unique==0)[0]:
-                    labels_unique = np.append(labels_unique,[9,11,15,17,18])
+                    labels_unique = np.append(labels_unique,self.add_list)
                     labels_unique = np.unique(labels_unique)
                     pass
                 label_add = np.zeros((1,20))
@@ -394,16 +401,20 @@ class LESS():
                     if labels_unique[1] != max_label_in_ground_truth:
                         self.propogated_error += 1
                         if self.print_detail:
-                            print('Ground: propogated result is',labels_unique,'while the max of ground truth is',max_label_in_ground_truth)
+                            print('Ground: propogated result is',labels_unique,'while the max of ground truth is',max_label_in_ground_truth,flush=True)
                     label_class[lidar_ground_max[0]] = 2
                 else:
                     # this group is weak
                     # this group is weak
-                    if (np.unique(labels_unique[labels_unique!=0]==label_true_unique).shape[0] == 1):
-                            if (np.unique(labels_unique[labels_unique!=0]==label_true_unique) == False):       # weak与ground truth有不一样的
-                                self.punish_error +=1
-                                if self.print_detail: 
-                                    print('Ground: weak labels is',labels_unique[labels_unique!=0],'while ground truth is',label_true_unique)
+                    if not (np.unique(np.isin(label_true_unique,labels_unique)).shape[0]==1):
+                        self.punish_error +=1
+                        if self.print_detail: 
+                            print('Ground: weak labels is',labels_unique[labels_unique!=0],'while ground truth is',label_true_unique,flush=True)
+                    # if (np.unique(labels_unique[labels_unique!=0]==label_true_unique).shape[0] == 1):
+                    #         if (np.unique(labels_unique[labels_unique!=0]==label_true_unique) == False):       # weak与ground truth有不一样的
+                    #             self.punish_error +=1
+                    #             if self.print_detail: 
+                    #                 print('Ground: weak labels is',labels_unique[labels_unique!=0],'while ground truth is',label_true_unique)
                     label_class[lidar_ground_max[0]] = 3
                 # let the ground point equal to (0,0,0)
                 lidar_xyz_unified[lidar_ground_max[0],:] = 0
@@ -464,7 +475,7 @@ class LESS():
                     if labels_unique[0] != max_label_in_ground_truth:
                         self.propogated_error_cluster += 1
                         if self.print_detail:
-                            print('Cluster: propogated result is',labels_unique,'while the max of ground truth is',max_label_in_ground_truth)
+                            print('Cluster: propogated result is',labels_unique,'while the max of ground truth is',max_label_in_ground_truth,flush=True)
                     label_class[index_in_origin_point_cloud] = 2
             # then, it can be propogated and weak, which propogated is just appear when len is 2 and label is something and 0(no label).
             # So if len is 2 and one is 0, it must be propogated
@@ -474,14 +485,18 @@ class LESS():
                 if labels_unique[1] != max_label_in_ground_truth:
                     self.propogated_error_cluster += 1
                     if self.print_detail:
-                        print('Cluster: propogated result is',labels_unique,'while the max of ground truth is',max_label_in_ground_truth)
+                        print('Cluster: propogated result is',labels_unique,'while the max of ground truth is',max_label_in_ground_truth,flush=True)
                 label_class[index_in_origin_point_cloud] = 2
             else:
-                # this group is weak
-                if not ((np.unique(labels_unique[labels_unique!=0]==label_true_unique).shape[0] == 1) & np.unique(labels_unique[labels_unique!=0]==label_true_unique) ==True):       # weak与ground truth有不一样的
+                # # this group is weak
+                # if not ((np.unique(labels_unique[labels_unique!=0]==label_true_unique).shape[0] == 1) & np.unique(labels_unique[labels_unique!=0]==label_true_unique) ==True):       # weak与ground truth有不一样的
+                #     self.punish_error_cluster +=1 
+                #     if self.print_detail:
+                #         print('Cluster: weak labels is',labels_unique[labels_unique!=0],'while ground truth is',label_true_unique)
+                if not np.unique(np.isin(label_true_unique,labels_unique)).shape[0]==1:       # weak与ground truth有不一样的
                     self.punish_error_cluster +=1 
                     if self.print_detail:
-                        print('Cluster: weak labels is',labels_unique[labels_unique!=0],'while ground truth is',label_true_unique)
+                        print('Cluster: weak labels is',labels_unique[labels_unique!=0],'while ground truth is',label_true_unique,flush=True)
                 label_class[index_in_origin_point_cloud] = 3
             # save the label by one hot encode.
             label_save[index_in_origin_point_cloud,:] = label_add
@@ -501,6 +516,16 @@ class LESS():
         # print(nothing.shape,'\n',scribble.shape,'\n',propogated.shape,'\n',weak.shape,'\n',)
         # weak_label = label_save[np.where(label_class==3)[0],:]
         # propogated_label = label_save[np.where(label_class==2)[0],:]
+        propogated_label_true = true_label_unified[label_class==2]
+        propogated_label = np.where(label_save[np.where(label_class == 2)[0],:] == True)[1]
+        propogated_label = propogated_label[propogated_label!=0]
+        True_propogated_point = np.count_nonzero(propogated_label == propogated_label_true)
+        print('propogated points right:',True_propogated_point,'/',propogated_label.shape[0],'. Wrong is',(1 - True_propogated_point/propogated_label.shape[0])*100,'%',flush=True)
+        weak_label_true = true_label_unified[label_class==3]
+        weak_label_true = np.expand_dims(weak_label_true,axis=1)
+        weak_label = label_save[np.where(label_class == 3)[0],:] == True
+        weak_label_right = weak_label[np.arange(len(weak_label_true)), weak_label_true.ravel()].reshape(-1, 1)
+        print('Weak points right:',weak_label_right.sum(),'/',weak_label.shape[0],'. Wrong is',(1 - weak_label_right.sum()/weak_label.shape[0])*100,'%',flush=True)
         if not self.Save:
             for file_len,file_name in zip(file_len_list,file_list):
                 label_class_file = os.path.join(label_class_dir,file_name)
