@@ -84,11 +84,13 @@ class LightningTrainer(pl.LightningModule):
         teacher_output = self(self.teacher, teacher_fea, teacher_rpz, batch_size)
         cl_loss = self.loss_cl(student_output, teacher_output, student_label)
         ls_loss = self.loss_ls(student_output.softmax(1), student_label, ignore=0)
-        loss_weak,loss_propogated = self.less_loss(student_output.softmax(1),student_label,LESS_labels,label_group)
+        
+        # loss_weak,loss_propogated = self.less_loss(student_output.softmax(1),student_label,LESS_labels,label_group)
+        loss_weak,loss_propogated = self.less_loss(student_output,student_label,LESS_labels,label_group)
         # loss =  4.0/6.5 * cl_loss + 4.0 / 6.5 * ls_loss + 4.0*0.5/6.5 * loss_weak + 4.0 * 2.0/6.5 * loss_propogated
-        loss =  cl_loss + ls_loss + loss_propogated + 0.25 * loss_weak
+        # loss =  cl_loss + ls_loss + loss_propogated + 0.25 * loss_weak
         # loss = loss.sum()
-        # loss = cl_loss + 2 * ls_loss + loss_weak 
+        loss = cl_loss + ls_loss + loss_propogated + 0.5 * loss_weak
         # loss = cl_loss + 2 * ls_loss + 2 * loss_propogated 
 
         # sch = self.lr_schedulers()
@@ -145,9 +147,9 @@ class LightningTrainer(pl.LightningModule):
 
     def configure_optimizers(self):
         optimizer = Adam(self.student.parameters(), **self.config['optimizer'])
-        scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.9)
-        return [optimizer],[scheduler]
-        # return [optimizer]
+        # scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.9)
+        # return [optimizer],[scheduler]
+        return [optimizer]
 
     def setup(self, stage):
         self.train_dataset = SemanticKITTI(split='train', config=self.config['dataset'])
