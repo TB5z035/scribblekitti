@@ -24,7 +24,8 @@ class LESS_Loss(nn.Module):
         propogated_label = torch.where(LESS_labels[label_group == 2] == 1)[1]
         propogated_label = propogated_label.clone()[propogated_label.clone()!=0]
         # loss_propogated = self.supervised_loss(student_output[label_group == 2],propogated_label,ignore=0)/propogated_label.shape[0]
-        loss_propogated = self.supervised_loss(student_output[label_group == 2],propogated_label)/propogated_label.shape[0]
+        loss_propogated = self.supervised_loss(student_output[label_group == 2],propogated_label)/student_output.shape[0]
+        loss_ls_propoageted = lovasz_softmax(student_output[label_group == 2].softmax(1),propogated_label,ignore=0)
 
         # for weak label
         # 先取出weak label的one hot
@@ -44,9 +45,9 @@ class LESS_Loss(nn.Module):
         # student_output_weak[weak_label==0] = 0
         # student_output_weak[:,0] = 0 
         # loss_weak = (torch.sum(torch.log(torch.sum(student_output_weak,dim=1)),dim=0))/student_output_weak.shape[0]
-        loss_weak = -((torch.log(torch.sum(student_output_weak,dim=1)).sum())/weak_label.shape[0])
+        loss_weak = -((torch.log(torch.sum(student_output_weak,dim=1)).sum())/student_output.shape[0])
 
         # 最后求和之后，注意除以的是非0的shape，
         # return (-loss_weak + loss_propogated + loss_sparse)/student_output[label_group!=0].shape[0]
         # return (-loss_weak + loss_propogated)/student_output[label_group!=0].shape[0]
-        return  loss_weak , loss_propogated
+        return  loss_weak , loss_propogated, loss_ls_propoageted

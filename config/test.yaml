@@ -32,12 +32,12 @@ val_dataloader:
 
 trainer:
   max_epochs: 75
-  gpus: [0]
+  gpus: [0,2,3,7]
   check_val_every_n_epoch: 1
   default_root_dir: 'output'
   accelerator: 'ddp'
   sync_batchnorm: True
-  accumulate_grad_batches: 2
+  accumulate_grad_batches: 1
   num_sanity_val_steps: 1
 
 optimizer:

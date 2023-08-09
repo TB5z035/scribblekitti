@@ -69,7 +69,7 @@ test_dataloader:
   num_workers: 4
 
 trainer:
-  max_epochs: 50
+  max_epochs: 75
   gpus: -1
   check_val_every_n_epoch: 1
   default_root_dir: 'output'

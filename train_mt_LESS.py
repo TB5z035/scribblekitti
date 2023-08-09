@@ -86,11 +86,11 @@ class LightningTrainer(pl.LightningModule):
         ls_loss = self.loss_ls(student_output.softmax(1), student_label, ignore=0)
         
         # loss_weak,loss_propogated = self.less_loss(student_output.softmax(1),student_label,LESS_labels,label_group)
-        loss_weak,loss_propogated = self.less_loss(student_output,student_label,LESS_labels,label_group)
+        loss_weak,loss_propogated,loss_ls_propoageted = self.less_loss(student_output,student_label,LESS_labels,label_group)
         # loss =  4.0/6.5 * cl_loss + 4.0 / 6.5 * ls_loss + 4.0*0.5/6.5 * loss_weak + 4.0 * 2.0/6.5 * loss_propogated
         # loss =  cl_loss + ls_loss + loss_propogated + 0.25 * loss_weak
         # loss = loss.sum()
-        loss = cl_loss + ls_loss + loss_propogated + 0.5 * loss_weak
+        loss = cl_loss + ls_loss + loss_ls_propoageted + loss_propogated + 0.5 * loss_weak
         # loss = cl_loss + 2 * ls_loss + 2 * loss_propogated 
 
         # sch = self.lr_schedulers()
@@ -98,6 +98,7 @@ class LightningTrainer(pl.LightningModule):
             # sch.step()
         self.log('cl_loss', cl_loss, on_epoch=True, prog_bar=True)
         self.log('ls_loss', ls_loss, on_epoch=True, prog_bar=True)
+        self.log('ls_propoageted_loss',loss_ls_propoageted,on_epoch=True, prog_bar=True)
         self.log('weak_loss',loss_weak,on_epoch=True, prog_bar=True)
         self.log('propogated_loss',loss_propogated,on_epoch=True, prog_bar=True)
         self.log('train_loss', loss, on_epoch=True, prog_bar=True)
@@ -139,9 +140,14 @@ class LightningTrainer(pl.LightningModule):
             self.log('val_teacher_iou_{}'.format(class_name), class_iou * 100)
         self.log('val_teacher_miou', teacher_miou, on_epoch=True, prog_bar=True)
 
-        if teacher_miou > self.best_miou:
-            self.best_miou = teacher_miou
-            self.best_iou = np.nan_to_num(teacher_iou) * 100
+        if teacher_miou > student_miou:
+            if teacher_miou > self.best_miou:
+                self.best_miou = teacher_miou
+                self.best_iou = np.nan_to_num(teacher_iou) * 100
+        else:
+            if student_miou > self.best_miou:
+                self.best_miou = student_miou
+                self.best_iou = np.nan_to_num(student_miou) * 100
         self.log('val_best_miou', self.best_miou, on_epoch=True, prog_bar=True)
         self.log('val_best_iou', self.best_iou, on_epoch=True, prog_bar=False)
 
@@ -186,6 +192,8 @@ class LightningTrainer(pl.LightningModule):
         os.makedirs(dirpath, exist_ok=True)
         checkpoint = pl.callbacks.ModelCheckpoint(dirpath=dirpath, filename='{epoch}-{val_teacher_miou:.2f}',
                                                   monitor='val_teacher_miou', mode='max', save_top_k=3)
+        checkpoint = pl.callbacks.ModelCheckpoint(dirpath=dirpath, filename='{epoch}-{val_best_miou:.2f}',
+                                                  monitor='val_best_miou', mode='max', save_top_k=1)
         return [checkpoint]
     # def training_step_end(self, outputs):
  
