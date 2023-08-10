@@ -4,11 +4,13 @@ import torch.nn.functional as F
 from utils.lovasz import lovasz_softmax
 
 class LESS_Loss(nn.Module):
-    def __init__(self, H, ignore_index=0):
+    def __init__(self, H, alpha, gamma, ignore_index=0):
         super().__init__()
         self.ignore_index = ignore_index
         # self.supervised_loss = lovasz_softmax
         self.supervised_loss = H(ignore_index=ignore_index, reduction='sum')
+        self.alpha = alpha
+        self.gamma = gamma
 
     def forward(self, student_output, student_label,LESS_labels,label_group):
         # print('student_output',student_output.shape)
@@ -24,8 +26,11 @@ class LESS_Loss(nn.Module):
         propogated_label = torch.where(LESS_labels[label_group == 2] == 1)[1]
         propogated_label = propogated_label.clone()[propogated_label.clone()!=0]
         # loss_propogated = self.supervised_loss(student_output[label_group == 2],propogated_label,ignore=0)/propogated_label.shape[0]
-        loss_propogated = self.supervised_loss(student_output[label_group == 2],propogated_label)/student_output.shape[0]
-        loss_ls_propoageted = lovasz_softmax(student_output[label_group == 2].softmax(1),propogated_label,ignore=0)
+        # WFocalLoss = α * (1 - p)^γ * L_CE(y_true, y_pred)
+        p = (student_output[label_group == 2].argmax(1) == propogated_label).sum().item()/propogated_label.shape[0]
+        loss_propogated = self.alpha *((1-p)**self.gamma) *self.supervised_loss(student_output[label_group == 2],propogated_label)/student_output.shape[0]
+        # loss_ls_propoageted = lovasz_softmax(student_output[label_group == 2].softmax(1),propogated_label,ignore=0) * propogated_label.shape[0]/student_output.shape[0]
+        loss_ls_propoageted = lovasz_softmax(student_output[label_group == 2].softmax(1),propogated_label,ignore=0) 
 
         # for weak label
         # 先取出weak label的one hot

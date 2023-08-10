@@ -54,7 +54,7 @@ val_dataset:
 #   num_workers: 8
 
 train_dataloader:
-  batch_size: 4
+  batch_size: 2
   shuffle: True
   num_workers: 8
 
@@ -82,6 +82,11 @@ trainer:
 # load_checkpoint: '/home/yujc/scribble/scribblekitti/output/scribblekitti_LESS/cylinder3d_mt_LESS/20230730-21:15:54/ckpt/epoch=13-val_teacher_miou=58.99.ckpt'
 # load_checkpoint: '/home/yujc/scribble/scribblekitti/output/scribblekitti_LESS/cylinder3d_mt_LESS/20230802-11:31:51/ckpt/epoch=4-val_teacher_miou=57.18.ckpt'
 # load_checkpoint: '/home/yujc/scribble/scribblekitti/output/scribblekitti_LESS/cylinder3d_mt_LESS/20230803-15:00:30/ckpt/epoch=3-val_teacher_miou=51.71.ckpt'
+Weighted_focal_loss:
+  alpha: 0.5
+  gamma: 1
+
+
 optimizer:
   lr: 0.001
 

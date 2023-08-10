@@ -60,17 +60,18 @@ logger:
 #                 τ (u, v) = max(ru, rv) × d
 LESS:
   RANSAC:
-    scans_per_subsequence: 1
+    scans_per_subsequence: 3      
     l_grid: 5
     iter_max: 1000
-    percent: 0.8
-    dist: 0.2
-    OOM_bar: 50000   # N points => N^2 float32 in cdist
+    percent: 0.7
+    dist: 0.7
+    OOM_bar: 80000   # N points => N^2 float32 in cdist
+    z_sort_bar: 0.01   # 规定分位数以下点才可以被选择
   cluster:
-    d: 0.02
-  target_directory: 'LESS_230804_weak_ground_fixed'
-  save: False
-  save_file_number: 1000
+    d: 0.005
+  target_directory: 'LESS_230810_add_z_sort'
+  save: True
+  save_file_number: 3
   start_number_in_one_seq: 0   # 0 means continue from existing files
   print_detail: False
-  add_list: [9,11,15]
+  add_list: [9,11,15,17]
