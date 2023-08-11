@@ -54,7 +54,7 @@ class LightningTrainer(pl.LightningModule):
 
         self.loss_ls = lovasz_softmax
         self.loss_cl = PartialConsistencyLoss(H=nn.CrossEntropyLoss, ignore_index=0)
-        self.less_loss = LESS_Loss(H=nn.CrossEntropyLoss,alpha=self.config['Weighted_focal_loss']['alpha'],gamma=self.config['Weighted_focal_loss']['gamma'],ignore_index=0)
+        self.less_loss = LESS_Loss(H=nn.CrossEntropyLoss,alpha=self.config['Weighted_focal_loss']['alpha'],gamma=self.config['Weighted_focal_loss']['gamma'],ignore_index=0,ignore_propogated_index=self.config['Propogated_Ignore_Index'])
         self.teacher_cm = ConfusionMatrix(self.nclasses)
         self.student_cm = ConfusionMatrix(self.nclasses)
         self.best_miou = 0
@@ -90,7 +90,7 @@ class LightningTrainer(pl.LightningModule):
         # loss =  4.0/6.5 * cl_loss + 4.0 / 6.5 * ls_loss + 4.0*0.5/6.5 * loss_weak + 4.0 * 2.0/6.5 * loss_propogated
         # loss =  cl_loss + ls_loss + loss_propogated + 0.25 * loss_weak
         # loss = loss.sum()
-        loss = cl_loss + ls_loss + 0.5 * loss_propogated + 0.5 * loss_weak
+        loss = cl_loss + ls_loss + loss_propogated + 0.5 * loss_weak + loss_ls_propoageted
         # loss = cl_loss + 2 * ls_loss + 2 * loss_propogated 
 
         # sch = self.lr_schedulers()

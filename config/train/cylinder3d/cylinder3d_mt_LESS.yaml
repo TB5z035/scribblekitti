@@ -54,7 +54,7 @@ val_dataset:
 #   num_workers: 8
 
 train_dataloader:
-  batch_size: 2
+  batch_size: 4
   shuffle: True
   num_workers: 8
 
@@ -84,7 +84,10 @@ trainer:
 # load_checkpoint: '/home/yujc/scribble/scribblekitti/output/scribblekitti_LESS/cylinder3d_mt_LESS/20230803-15:00:30/ckpt/epoch=3-val_teacher_miou=51.71.ckpt'
 Weighted_focal_loss:
   alpha: 0.5
-  gamma: 1
+  gamma: 0.5
+
+
+Propogated_Ignore_Index: [9, 11, 15, 17, 18, 19]
 
 
 optimizer:

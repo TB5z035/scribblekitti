@@ -599,7 +599,7 @@ if __name__ == '__main__':
     with open(dataset_config_path, 'r') as f:
         config['val_dataset'].update(yaml.safe_load(f))
     parser = argparse.ArgumentParser()
-    parser.add_argument('--solve_seq', default=6,help='-1 means all,0-10 should be input')
+    parser.add_argument('--solve_seq', default=5,help='-1 means all,0-10 should be input')
     args = parser.parse_args()
     less = LESS(config['dataset'],config['LESS'],args=args)
     less.run_LESS()
