@@ -15,6 +15,7 @@ from pytorch_lightning.loggers import TensorBoardLogger, WandbLogger
 from sklearnex import patch_sklearn
 from torch.optim import Adam
 from torch.utils.data import DataLoader
+import torch.nn.functional as F
 
 import wandb
 from dataloader.semantickitti import SemanticKITTI, Baseline
@@ -50,12 +51,6 @@ class LightningTrainer(pl.LightningModule):
         self._load_dataset_info()
         self.momentum = 0.996
         self.network = Cylinder3DProject(nclasses=self.nclasses, downsample=False, **config['model'])
-        # if (self.config['pretrain_loss']['type'] == 'mec'):
-        #     self.teacher = copy.deepcopy(self.network)
-        #     for p in self.teacher.parameters():
-        #         p.requires_grad = False
-        # self.network = Cylinder3D(nclasses=self.nclasses, downsample=False, **config['model'])
-        # error when loading state dict
         if 'load_checkpoint' in self.config:
             ckpt_path = self.config['load_checkpoint']
             state_dict = torch.load(ckpt_path, map_location='cpu')
@@ -68,59 +63,100 @@ class LightningTrainer(pl.LightningModule):
 
         self.save_hyperparameters('config')
 
-    def forward(self, model, fea, pos):
-        _, features = model(fea, pos, len(fea))
+    def forward(self, model, fea, pos, reverse_indices=None):
+        _, features = model(fea, pos, len(fea), unique_invs=reverse_indices)
         return features
 
     def training_step(self, batch, batch_idx):
+        
         # if (self.config['pretrain_loss']['type'] == 'mec'):
         #     with torch.no_grad():
         #         for param_q, param_k in zip(self.network.parameters(), self.teacher.parameters()):
         #             param_k.data.mul_(self.momentum).add_((1 - self.momentum) * param_q.detach().data)
                 
-        if (self.config['pretrain_loss']['type'] == 'EMP'):
-            output = []
-            for (rpz, fea, label) in batch:
-                output.append(self(self.network, fea, rpz))
-            loss = self.loss(output)
-        else:
-            (rpz_a, fea_a, label_a), (rpz_b, fea_b, label_b) = batch
-            output_a = self(self.network, fea_a, rpz_a)
-            output_b = self(self.network, fea_b, rpz_b)
-            
-            # if (self.config['pretrain_loss']['type'] == 'mec'):
-            #     teacher_a = self(self.teacher, fea_a, rpz_a)
-            #     teacher_b = self(self.teacher, fea_b, rpz_b)
+        # if (self.config['pretrain_loss']['type'] == 'EMP'):
+        #     output = []
+        #     for (rpz, fea, label) in batch:
+        #         output.append(self(self.network, fea, rpz))
+        #     loss = self.loss(output)
+        # else:
+        
+        (rpz_a, fea_a, label_a), (rpz_b, fea_b, label_b) = batch
+        
+        # 把两个 batch 数据合到一起，处理格式
+        coords_a = []
+        for b in range(len(rpz_a)):
+            coords_a.append(F.pad(rpz_a[b], (1, 0), 'constant', value=b))
+        feats_a = torch.cat(fea_a, dim=0)
+        coords_a = torch.cat(coords_a, dim=0)
+        
+        coords_b = []
+        for b in range(len(rpz_b)):
+            coords_b.append(F.pad(rpz_b[b], (1, 0), 'constant', value=b))
+        feats_b = torch.cat(fea_b, dim=0)
+        coords_b = torch.cat(coords_b, dim=0)
+        
+        # unique 并得到原坐标最先在新数组里的反坐标
+        unique_coords_a, unique_inv_a, counts_a = torch.unique(coords_a, return_inverse=True, return_counts=True, dim=0)
+        _, ind_sorted = torch.sort(unique_inv_a, stable=True)
+        cum_sum = counts_a.cumsum(0)
+        cum_sum = torch.cat((torch.tensor([0]).cuda(), cum_sum[:-1]))
+        first_indicies_a = ind_sorted[cum_sum]
+        
+        unique_coords_b, unique_inv_b, counts_b = torch.unique(coords_b, return_inverse=True, return_counts=True, dim=0)
+        _, ind_sorted = torch.sort(unique_inv_b, stable=True)
+        cum_sum = counts_b.cumsum(0)
+        cum_sum = torch.cat((torch.tensor([0]).cuda(), cum_sum[:-1]))
+        first_indicies_b = ind_sorted[cum_sum]
+        
+        # 找到两个 unique 数组的并集
+        indexs = np.intersect1d(first_indicies_a.cpu(), first_indicies_b.cpu())
 
-            #     loss = self.loss(teacher_a, output_b)/2 + self.loss(teacher_b, output_a)/2
+        # len_a = len(unique_coords_a)
+        # len_b = len(unique_coords_b)
+        # for i in indexs:
+        #     for j in range(len(coords_a)):
+        #         if unique_inv_a[j] == unique_inv_a[i] and j in indexs and j != i:
+        #             unique_inv_a[j] = len_a
+        #             len_a += 1
+        #         if unique_inv_b[j] == unique_inv_b[i] and j in indexs and j != i:
+        #             unique_inv_b[j] = len_b
+        #             len_b += 1
             
-            # else:
-            
-            loss = self.loss(output_a, output_b)
+        
+        import IPython
+        IPython.embed()
+        
+        # torch.cuda.empty_cache()
+        
+        # skip=True 跳过 model 里对数据的处理
+        # output_a = self(self.network, feats_a_uniqued, coords_a_uniqued, skip=True)
+        # output_b = self(self.network, feats_b_uniqued, coords_b_uniqued, skip=True)
+        
+        output_a = self(self.network, fea_a, rpz_a, reverse_indices=unique_inv_a)
+        output_b = self(self.network, fea_b, rpz_b, reverse_indices=unique_inv_b)
+        
+        loss = self.loss(output_a, output_b)
 
         self.log('pretrain_loss', loss, prog_bar=True)
         if self.global_rank == 0:
             self.logger.experiment.log({"pretrain_loss": loss.item()})
 
         return loss
-        # pass
 
     def training_epoch_end(self, outputs) -> None:
-        # pass
         dirpath = os.path.join(self.config['base_dir'], 'model')
         os.makedirs(dirpath, exist_ok=True)
         torch.save(self.network.state_dict(), os.path.join(dirpath, f'{self.current_epoch}.ckpt'))
 
     def validation_step(self, batch, batch_idx):
         if self.global_rank == 0:
-            
-            # ckpt_path = "/DATA_EDS2/zhangyk2306/scribblekitti_tbw/pretrain_bt_mec/20230725-10:39:27/model/10.ckpt"
-            # state_dict = torch.load(ckpt_path, map_location='cpu')
-            # self.network.load_state_dict(state_dict)
-            # self.network = self.network.cuda()
-            # # print('loaded checkpoint from ' + ckpt_path)
-            
             rpz, fea, label = batch
+            # coord = []
+            # for b in range(len(rpz)):
+            #     coord.append(F.pad(rpz[b], (1, 0), 'constant', value=b))
+            # feat = torch.cat(fea, dim=0)
+            # coord = torch.cat(coord, dim=0)
             output = self(self.network, fea, rpz)
             return [output.cpu()[::100], label[0].cpu()[::100]]
         else:
@@ -134,10 +170,9 @@ class LightningTrainer(pl.LightningModule):
             colors = torch.cat(labels, dim=0).cpu().numpy() + 1
             print('Number of features: ', len(features))
             feature_embedded = TSNE(n_components=2, learning_rate='auto', perplexity=3).fit_transform(features)
-            dirpath = "mec"
+            dirpath = os.path.join(self.config['base_dir'], 'tsne')
             os.makedirs(dirpath, exist_ok=True)
             dirpath = os.path.join(dirpath, f'{self.current_epoch}.png')
-            # dirpath = os.path.join(dirpath, '10.png')
             plt.scatter(feature_embedded[:, 0], feature_embedded[:, 1], c=colors, cmap=cmp, s=1)
             plt.savefig(dirpath, dpi=600)
             plt.cla()

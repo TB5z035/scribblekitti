@@ -161,7 +161,7 @@ class Cylindrical(Baseline, prefix='cylindrical'):
 
         rpz = self.cart2cyl(xyz)
         clipped_rpz = np.clip(rpz, self.min_bound, self.max_bound)
-        rpz_discrete = (np.floor((clipped_rpz - self.min_bound) / self.drpz)).astype(np.int)
+        rpz_discrete = (np.floor((clipped_rpz - self.min_bound) / self.drpz)).astype(np.int64)
 
         center = (rpz_discrete.astype(np.float32) + 0.5) * self.drpz + self.min_bound
         centered_rpz = rpz - center

@@ -50,6 +50,10 @@ class LightningTrainer(pl.LightningModule):
 
         self.save_hyperparameters('config')
 
+    # def freeze_before_training(self, pl_module):
+    #     self.freeze(self.student.super())
+    #     self.freeze(self.teacher.super())
+    
     def forward(self, model, fea, pos, batch_size):
         output_voxel, _ = model(fea, pos, batch_size)
         outputs = []
@@ -94,13 +98,6 @@ class LightningTrainer(pl.LightningModule):
         
         self.log('val_loss', loss, on_epoch=True, prog_bar=True)
         mask = (teacher_label != 0).squeeze()
-        # import IPython
-        # Ipython.embed()
-        
-        # with open('output.txt', 'w') as f:
-        #     f.write(teacher_xyz, 255, 0, 0) # Red
-        #     f.write(teacher_xyz, 0, 255, 0) # Green
-        # student_xyz, 255, 0, 0
         self.student_cm.update(student_output.argmax(1)[mask], student_label[mask])
         self.teacher_cm.update(teacher_output.argmax(1)[mask], teacher_label[mask])
 
@@ -125,9 +122,9 @@ class LightningTrainer(pl.LightningModule):
 
     def configure_optimizers(self):
         optimizer = Adam(self.student.parameters(), **self.config['optimizer'])
-        scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.9)
-        return [optimizer],[scheduler]
-        # return [optimizer]
+        # scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.9)
+        # return [optimizer],[scheduler]
+        return [optimizer]
 
     def setup(self, stage):
         self.train_dataset = SemanticKITTI(split='train', config=self.config['dataset'])
@@ -201,10 +198,6 @@ if __name__ == '__main__':
     wandb_logger = WandbLogger(config=config,
                                save_dir=config['trainer']['default_root_dir'],
                                **config['logger'])
-    # if "load_checkpoint" in config:
-    #     model = LightningTrainer.load_from_checkpoint(config["load_checkpoint"])
-    #     print('loaded checkpoint from ' + config["load_checkpoint"])
-    # else:
     model = LightningTrainer(config)
     Trainer(logger=wandb_logger,
             callbacks=model.get_model_callback(),

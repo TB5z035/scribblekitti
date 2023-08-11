@@ -2,58 +2,53 @@ model:
   in_feat: 9
   hid_feat: 32
 
+pretrain_loss: 
+  type: barlow_twins
+  coef: 0.0001
+
 dataset:
   root_dir: '/data14/tb5zhh/workspace/datasets/SemanticKITTI/sequences'
-  prefix: cylindrical_mt
-  label_directory: scribbles
+  prefix: cylindrical_twin
   spatial_shape: [480,360,32]
   max_bound: [50,3.1415926,2]
   min_bound: [0,-3.1415926,-4]
-  aug:
-    student: ['rotate', 'flip', 'scale', 'noise']
-    teacher: ['rotate', 'flip']
+  aug: ['rotate', 'flip', 'noise']
   bin_size: [[24,9],[48,18],[96,36]]
 
 val_dataset:
   root_dir: '/data14/tb5zhh/workspace/datasets/SemanticKITTI/sequences'
-  prefix: cylindrical_mt
-  label_directory: labels
+  prefix: cylindrical_sample
   spatial_shape: [480,360,32]
   max_bound: [50,3.1415926,2]
   min_bound: [0,-3.1415926,-4]
+  aug: []
   bin_size: [[24,9],[48,18],[96,36]]
 
 train_dataloader:
   batch_size: 2
   shuffle: True
   num_workers: 8
-  drop_last: True
 
 val_dataloader:
-  batch_size: 2
-  shuffle: False
-  num_workers: 8
-
-test_dataloader:
   batch_size: 1
   shuffle: False
   num_workers: 4
 
 trainer:
   max_epochs: 75
-  gpus: [2,3]
+  gpus: -1
   check_val_every_n_epoch: 1
-  default_root_dir: "/DATA_EDS2/zhangyk2306"
+  default_root_dir: '/DATA_EDS2/zhangyk2306'
   accelerator: 'ddp'
   sync_batchnorm: True
-  accumulate_grad_batches: 2
-  num_sanity_val_steps: 1
+  accumulate_grad_batches: 1
+  num_sanity_val_steps: 10
 
-load_checkpoint: "/DATA_EDS2/zhangyk2306/scribblekitti_tbw/pretrain_bt_coef1e-5/20230809-22:52:33/model/13.ckpt"
+# load_checkpoint: /DATA_EDS2/zhangyk2306/scribblekitti_tbw/pretrain_bt/20230725-08:13:34/model/22.ckpt
 
 optimizer:
   lr: 0.001
 
 logger:
-  project: 'scribblekitti_zyk'
-  name: 'placeholder'
+  project: 'scribblekitti_tbw'
+  name: placeholder # `name` has no effect

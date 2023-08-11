@@ -15,11 +15,11 @@ import spconv
 class FeatureGenerator(nn.Module):
     def __init__(self,
                  in_feat=9,
-                 out_feat=16, downsample=True):
+                 out_feat=16, pretrain=False, downsample=True):
         super().__init__()
         self.downsample = downsample
         
-        self.pretrain = False
+        self.pretrain = pretrain
 
         self.net = nn.Sequential(
             nn.BatchNorm1d(in_feat),
@@ -51,33 +51,41 @@ class FeatureGenerator(nn.Module):
             coords.append(F.pad(coord[b], (1, 0), 'constant', value=b))
         feats = torch.cat(feat, dim=0)
         coords = torch.cat(coords, dim=0)
-
+        
         # Shuffle data
-        if shuffle is None:
-            shuffle = torch.randperm(feats.shape[0], device=feat[0].device)
-        feats = feats[shuffle, :]
-        if reverse_indices is not None:
-            reverse_indices = reverse_indices[shuffle]
-            unique_inv = reverse_indices
-            coords = coords[shuffle, :]
-            unique_coords = torch_scatter.scatter_max(coords, reverse_indices, dim=0)[0]
-        else:
-        # Unique coordinates
-            if self.pretrain:
-                pass
+        if self.pretrain == False:
+            if shuffle is None:
+                shuffle = torch.randperm(feats.shape[0], device=feat[0].device)
+            if reverse_indices is not None:
+                reverse_indices = reverse_indices[shuffle]
+                unique_inv = reverse_indices
+                feats = feats[shuffle, :]
+                coords = coords[shuffle, :]
+                unique_coords = torch_scatter.scatter_max(coords, reverse_indices, dim=0)[0]
             else:
+                feats = feats[shuffle, :]
                 coords = coords[shuffle, :]
                 unique_coords, unique_inv = torch.unique(coords, return_inverse=True, dim=0)
-
-        # Generate features
-        feats = self.net(feats)
-        if not self.pretrain:
-            feats = torch_scatter.scatter_max(feats, unique_inv, dim=0)[0]
-        feats = self.compress(feats)
-        if self.pretrain:
-            return feats, coords
-        return feats, unique_coords.type(torch.int64)
-
+            feats = self.net(feats)
+            feats, indexs = torch_scatter.scatter_max(feats, unique_inv, dim=0)
+            feats = self.compress(feats)
+            return feats, unique_coords.type(torch.int64)
+        else:
+            # No shuffle
+            if reverse_indices is not None:
+                import IPython
+                IPython.embed()
+                unique_coords = torch_scatter.scatter_max(coords, reverse_indices, dim=0)[0]
+                feats = self.net(feats)
+                feats = torch_scatter.scatter_max(feats, reverse_indices, dim=0)[0]
+                feats = self.compress(feats)
+                return feats, unique_coords.type(torch.int64)
+            else:
+                # For validation to run
+                feats = self.net(feats)
+                feats = self.compress(feats)
+                return feats, coords
+       
 class AsymmetricUNet(nn.Module):
     def __init__(self,
                  spatial_shape,
@@ -106,9 +114,6 @@ class AsymmetricUNet(nn.Module):
         self.dropout = nn.Dropout()
 
     def forward(self, voxel_features, coors, batch_size):
-        # print(voxel_features.shape, "voxel")
-        # print(coors.shape, "coordinates")
-        # print(batch_size, "batch_size")
         ret = spconv.SparseConvTensor(voxel_features, coors.int(), self.spatial_shape, batch_size)
         ret = self.contextBlock(ret)
         
@@ -126,11 +131,8 @@ class AsymmetricUNet(nn.Module):
         up0e.features = torch.cat((up0e.features, up1e.features), 1)
         
         up0e.features = self.dropout(up0e.features)
-        # print(up0e.features.shape)
-        # print("up0e end")
         logits = self.logits(up0e)
         y = logits.dense()
-        # print("y shape", y.shape)
         return y, up0e
 
 
@@ -139,34 +141,24 @@ class Cylinder3D(nn.Module):
                  spatial_shape=[480,360,32],
                  nclasses=20,
                  in_feat=9,
-                 hid_feat=32, downsample=True):
+                 hid_feat=32, pretrain=False, downsample=True):
         super().__init__()
-        self.fcnn = FeatureGenerator(in_feat=in_feat, out_feat=hid_feat//2, downsample=downsample)
+        self.fcnn = FeatureGenerator(in_feat=in_feat, out_feat=hid_feat//2, pretrain=pretrain, downsample=downsample)
         self.unet = AsymmetricUNet(spatial_shape=spatial_shape,
                                    nclasses=nclasses,
                                    in_feat=hid_feat//2,
                                    hid_feat=hid_feat)
 
     def forward(self, feat, coord, batch_size, unique_invs=None, shuffle=None):
-        # import IPython
-        # IPython.embed()
         feat, coord = self.fcnn(feat, coord, unique_invs, shuffle)
         return self.unet(feat, coord, batch_size)
 
 class Cylinder3DProject(Cylinder3D):
-    def __init__(self, spatial_shape=[480, 360, 32], nclasses=20, in_feat=9, hid_feat=32, downsample=True):
-        super().__init__(spatial_shape, nclasses, in_feat, hid_feat, downsample)
+    def __init__(self, spatial_shape=[480, 360, 32], nclasses=20, in_feat=9, hid_feat=32, pretrain=True, downsample=True):
+        super().__init__(spatial_shape, nclasses, in_feat, hid_feat, pretrain, downsample)
         self.feature_size = 4 * hid_feat
         self.projector = spconv.SubMConv3d(4 * hid_feat, 4 * hid_feat, indice_key="logit", kernel_size=3, stride=1, padding=1,
                                         bias=True)
     def forward(self, feat, coord, batch_size, unique_invs=None, shuffle=None):
         y, hidden = super().forward(feat, coord, batch_size, unique_invs, shuffle)
-        # import IPython
-        # IPython.embed()
-        
-        # y.shape.shape is [1, 20, 480, 360, 32]
-        # hidden.shape is [1, 128, 480, 360, 32] as sparse Tensor
-        
-        # feature nums may differ
-        return y, self.projector(hidden).features # later.shape is [46952, 128]
-        # return y, self.projector(hidden).dense().reshape(-1, 1)
+        return y, self.projector(hidden).features
