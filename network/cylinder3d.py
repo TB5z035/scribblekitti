@@ -52,8 +52,8 @@ class FeatureGenerator(nn.Module):
         feats = torch.cat(feat, dim=0)
         coords = torch.cat(coords, dim=0)
         
-        # Shuffle data
         if self.pretrain == False:
+            # Shuffle data
             if shuffle is None:
                 shuffle = torch.randperm(feats.shape[0], device=feat[0].device)
             if reverse_indices is not None:
@@ -72,16 +72,14 @@ class FeatureGenerator(nn.Module):
             return feats, unique_coords.type(torch.int64)
         else:
             # No shuffle
-            if reverse_indices is not None:
-                import IPython
-                IPython.embed()
-                unique_coords = torch_scatter.scatter_max(coords, reverse_indices, dim=0)[0]
+            if reverse_indices is None:
+                unique_coords, unique_inv = torch.unique(coords, return_inverse=True, dim=0)
                 feats = self.net(feats)
-                feats = torch_scatter.scatter_max(feats, reverse_indices, dim=0)[0]
+                feats = torch_scatter.scatter_max(feats, unique_inv, dim=0)[0]
                 feats = self.compress(feats)
                 return feats, unique_coords.type(torch.int64)
             else:
-                # For validation to run
+                # If validation for pretraining
                 feats = self.net(feats)
                 feats = self.compress(feats)
                 return feats, coords
@@ -91,8 +89,11 @@ class AsymmetricUNet(nn.Module):
                  spatial_shape,
                  nclasses=20,
                  in_feat=16,
-                 hid_feat=32):
+                 hid_feat=32,
+                 pretrain=False):
         super().__init__()
+        
+        self.pretrain = pretrain
         self.spatial_shape = np.array(spatial_shape)
 
         self.contextBlock = ResContextBlock(in_feat, hid_feat, indice_key="pre")
@@ -131,8 +132,12 @@ class AsymmetricUNet(nn.Module):
         up0e.features = torch.cat((up0e.features, up1e.features), 1)
         
         up0e.features = self.dropout(up0e.features)
-        logits = self.logits(up0e)
-        y = logits.dense()
+        
+        if self.pretrain == False:
+            logits = self.logits(up0e)
+            y = logits.dense()
+        else:
+            y = None
         return y, up0e
 
 
@@ -147,7 +152,8 @@ class Cylinder3D(nn.Module):
         self.unet = AsymmetricUNet(spatial_shape=spatial_shape,
                                    nclasses=nclasses,
                                    in_feat=hid_feat//2,
-                                   hid_feat=hid_feat)
+                                   hid_feat=hid_feat,
+                                   pretrain=pretrain)
 
     def forward(self, feat, coord, batch_size, unique_invs=None, shuffle=None):
         feat, coord = self.fcnn(feat, coord, unique_invs, shuffle)

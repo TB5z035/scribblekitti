@@ -4,7 +4,7 @@ model:
 
 pretrain_loss: 
   type: barlow_twins
-  coef: 0.0051
+  coef: 0.0001
 
 dataset:
   root_dir: '/data14/tb5zhh/workspace/datasets/SemanticKITTI/sequences'
@@ -25,7 +25,7 @@ val_dataset:
   bin_size: [[24,9],[48,18],[96,36]]
 
 train_dataloader:
-  batch_size: 2
+  batch_size: 4
   shuffle: True
   num_workers: 8
 
@@ -36,7 +36,7 @@ val_dataloader:
 
 trainer:
   max_epochs: 75
-  gpus: [2]
+  gpus: [1]
   check_val_every_n_epoch: 1
   default_root_dir: '/DATA_EDS2/zhangyk2306'
   accelerator: 'ddp'
@@ -47,7 +47,7 @@ trainer:
 # load_checkpoint: /DATA_EDS2/zhangyk2306/scribblekitti_tbw/pretrain_bt/20230725-08:13:34/model/22.ckpt
 
 optimizer:
-  lr: 0.001
+  lr: 0.0001
 
 logger:
   project: 'scribblekitti_tbw'

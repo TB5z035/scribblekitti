@@ -42,8 +42,9 @@ class BarlowTwinsLoss(TwinsLoss):
         # start_forward = time.time()
         
         batch_size, feature_size = self._assert_feat(feature_a, feature_b)
-        feature_a = self.bn(feature_a)
-        feature_b = self.bn(feature_b)
+        if batch_size > 1:
+            feature_a = self.bn(feature_a)
+            feature_b = self.bn(feature_b)
         
         # print("tick1", time.time() - start_forward)
 

@@ -24,6 +24,7 @@ from utils.barlow_twins_loss import BarlowTwinsLoss, MECTwinsLoss, VICReg, EMPLo
 
 patch_sklearn()
 from sklearn.manifold import TSNE
+import torch_scatter
 
 PRETRAIN_LOSS = {
     'barlow_twins': BarlowTwinsLoss,
@@ -62,28 +63,17 @@ class LightningTrainer(pl.LightningModule):
         self.loss = PRETRAIN_LOSS[loss_type](self.network.feature_size, **self.config['pretrain_loss'])
 
         self.save_hyperparameters('config')
+        self.batch_cache_a = torch.zeros((1200, 128))
+        self.batch_cache_b = torch.zeros((1200, 128))
+        self.cache_count = 0
 
     def forward(self, model, fea, pos, reverse_indices=None):
         _, features = model(fea, pos, len(fea), unique_invs=reverse_indices)
         return features
 
     def training_step(self, batch, batch_idx):
+        (rpz_a, fea_a, label_a, transform), (rpz_b, fea_b, label_b, _) = batch
         
-        # if (self.config['pretrain_loss']['type'] == 'mec'):
-        #     with torch.no_grad():
-        #         for param_q, param_k in zip(self.network.parameters(), self.teacher.parameters()):
-        #             param_k.data.mul_(self.momentum).add_((1 - self.momentum) * param_q.detach().data)
-                
-        # if (self.config['pretrain_loss']['type'] == 'EMP'):
-        #     output = []
-        #     for (rpz, fea, label) in batch:
-        #         output.append(self(self.network, fea, rpz))
-        #     loss = self.loss(output)
-        # else:
-        
-        (rpz_a, fea_a, label_a), (rpz_b, fea_b, label_b) = batch
-        
-        # 把两个 batch 数据合到一起，处理格式
         coords_a = []
         for b in range(len(rpz_a)):
             coords_a.append(F.pad(rpz_a[b], (1, 0), 'constant', value=b))
@@ -96,22 +86,118 @@ class LightningTrainer(pl.LightningModule):
         feats_b = torch.cat(fea_b, dim=0)
         coords_b = torch.cat(coords_b, dim=0)
         
-        # unique 并得到原坐标最先在新数组里的反坐标
-        unique_coords_a, unique_inv_a, counts_a = torch.unique(coords_a, return_inverse=True, return_counts=True, dim=0)
-        _, ind_sorted = torch.sort(unique_inv_a, stable=True)
-        cum_sum = counts_a.cumsum(0)
-        cum_sum = torch.cat((torch.tensor([0]).cuda(), cum_sum[:-1]))
-        first_indicies_a = ind_sorted[cum_sum]
+        unique_coords_a, unique_inv_a = torch.unique(coords_a, return_inverse=True, dim=0)
+        unique_coords_b, unique_inv_b = torch.unique(coords_b, return_inverse=True, dim=0)
         
-        unique_coords_b, unique_inv_b, counts_b = torch.unique(coords_b, return_inverse=True, return_counts=True, dim=0)
-        _, ind_sorted = torch.sort(unique_inv_b, stable=True)
-        cum_sum = counts_b.cumsum(0)
-        cum_sum = torch.cat((torch.tensor([0]).cuda(), cum_sum[:-1]))
-        first_indicies_b = ind_sorted[cum_sum]
+        output_a = self(self.network, fea_a, rpz_a)
+        output_b = self(self.network, fea_b, rpz_b)
+        
+        transform = torch.cat(transform, dim=0)
+
+        # transform b by the transformation that has done by a
+        
+        unique_coords_b_transformed = []
+        for i in unique_coords_b:
+            unique_coords_b_transformed.append(F.pad(transform[i[0] * 5529600 + i[1] + (i[2] + i[3] * 360) * 480], (1, 0), 'constant', value=i[0]))
+        unique_coords_b_transformed = torch.stack(unique_coords_b_transformed, dim=0) # 70308 -> 35517 unique ones
+        
+        transformed_b_unique = torch.unique(unique_coords_b_transformed, dim=0)
+        
+        a_cat_b, counts = torch.unique(torch.cat([unique_coords_a, transformed_b_unique]), return_counts=True, dim=0)
+        intersect_coords = a_cat_b[torch.where(counts.cpu().gt(1))] # 17 unique intersects
+        
+        mask_a = (unique_coords_a[:, None] == intersect_coords).all(-1).any(-1) # 只有 17 个在 intersect 中
+        feats_a_filtered = output_a[mask_a]
+        coords_a_filtered = unique_coords_a[mask_a]
+        
+        # select the intersects respectively
+        
+        unique_transformed_coords_b, unique_transformed_inv_b = torch.unique(unique_coords_b_transformed, return_inverse=True, dim=0)
+        output_b = torch_scatter.scatter_max(output_b, unique_transformed_inv_b, dim=0)[0]
+        
+        mask_b = (unique_transformed_coords_b[:, None] == intersect_coords).all(-1).any(-1)
+        
+        mask_b = np.where((unique_transformed_coords_b[:, None] == coords_a_filtered).all(-1).any(-1).cpu() == True)[0]
+        feats_b_filtered = output_b[mask_b]
+        
+        # cache the features and compute loss when it's big enough
+        
+        # import IPython
+        # IPython.embed()
+        
+        # breakpoint()
+        
+        for i in range(feats_a_filtered.shape[0]):
+            self.batch_cache_a[i + self.cache_count] = feats_a_filtered[i]
+            self.batch_cache_b[i + self.cache_count] = feats_b_filtered[i]
+        # self.batch_cache_a = torch.cat([self.batch_cache_a[:self.cache_count], feats_a_filtered.cpu(), self.batch_cache_a[self.cache_count+feats_a_filtered.shape[0]:]])
+        # self.batch_cache_b = torch.cat([self.batch_cache_b[:self.cache_count], feats_b_filtered.cpu(), self.batch_cache_b[self.cache_count+feats_a_filtered.shape[0]:]])
+        
+        # self.batch_cache_a.retain_graph = True
+        # self.batch_cache_b.retain_graph = True
+        self.cache_count += feats_a_filtered.shape[0]
+        
+        print("# uniquified voxels = " , self.cache_count)
+        
+        if self.cache_count > 1000:
+            loss = self.loss(batch_cache_a.cuda(), batch_cache_b.cuda())
+            cache_count = 0
+            self.batch_cache_a = torch.zeros((1200, 128))
+            self.batch_cache_b = torch.zeros((1200, 128))
+            self.log('pretrain_loss', loss, prog_bar=True)
+            if self.global_rank == 0:
+                self.logger.experiment.log({"pretrain_loss": loss.item()})
+        else:
+            return
+
+        return loss
+    
+        #  这不对呐，应该有 12367 个的
+        # mask_b = (unique_coords_b_transformed[:, None] == intersect_coords).all(-1).any(-1) # 47808 个在 intersect 中
+        
+        # In [124]: torch.unique(unique_coords_b_transformed[np.where(mask_b.cpu() == True)[0]], dim=0).shape[0]
+        # Out[124]: 12367
+        # In [125]: intersect_coords.shape[0]
+        # Out[125]: 12367
+        # In [126]: torch.unique(unique_coords_a[np.where(mask_a.cpu() == True)[0]], dim=0).shape[0]
+        # Out[126]: 13
+        
+        # mask_a = np.isin(unique_coords_a.cpu(), intersect_coords.cpu())
+        # mask_b = np.isin(unique_coords_b_transformed.cpu(), intersect_coords.cpu())
+        
+        # 找到对应关系
+        # reorder
+        # masks_a = []
+        # for i in range(128):
+        #     masks_a.append(mask_a)
+        # mask_a = torch.stack(masks_a).reshape(len(mask_a), 128)
+        # masks_b = []
+        # for i in range(128):
+        #     masks_b.append(mask_b)
+        # mask_b = torch.stack(masks_b).reshape(len(mask_b), 128)
+        # feats_a_filtered = mask_a * output_a
+        # feats_b_filtered = mask_b * output_b
+        
+        # loss = self.loss(feats_a_filtered, feats_b_filtered)
+        
+        # _, ind_sorted = torch.sort(unique_inv_a, stable=True)
+        # cum_sum = counts_a.cumsum(0)
+        # cum_sum = torch.cat((torch.tensor([0]).cuda(), cum_sum[:-1]))
+        # first_indicies_a = ind_sorted[cum_sum]
+        
+        # _, ind_sorted = torch.sort(unique_inv_b, stable=True)
+        # cum_sum = counts_b.cumsum(0)
+        # cum_sum = torch.cat((torch.tensor([0]).cuda(), cum_sum[:-1]))
+        # first_indicies_b = ind_sorted[cum_sum]
         
         # 找到两个 unique 数组的并集
-        indexs = np.intersect1d(first_indicies_a.cpu(), first_indicies_b.cpu())
+        # indexs = np.intersect1d(first_indicies_a.cpu(), first_indicies_b.cpu())
 
+        # coords_a = coords_a[indexs]
+        # coords_b = coords_b[indexs]
+        # feats_a = feats_a[indexs]
+        # feats_b
+        
         # len_a = len(unique_coords_a)
         # len_b = len(unique_coords_b)
         # for i in indexs:
@@ -124,8 +210,8 @@ class LightningTrainer(pl.LightningModule):
         #             len_b += 1
             
         
-        import IPython
-        IPython.embed()
+        # import IPython
+        # IPython.embed()
         
         # torch.cuda.empty_cache()
         
@@ -133,16 +219,10 @@ class LightningTrainer(pl.LightningModule):
         # output_a = self(self.network, feats_a_uniqued, coords_a_uniqued, skip=True)
         # output_b = self(self.network, feats_b_uniqued, coords_b_uniqued, skip=True)
         
-        output_a = self(self.network, fea_a, rpz_a, reverse_indices=unique_inv_a)
-        output_b = self(self.network, fea_b, rpz_b, reverse_indices=unique_inv_b)
+        # output_a = self(self.network, fea_a, rpz_a, reverse_indices=unique_inv_a)
+        # output_b = self(self.network, fea_b, rpz_b, reverse_indices=unique_inv_b)
         
-        loss = self.loss(output_a, output_b)
-
-        self.log('pretrain_loss', loss, prog_bar=True)
-        if self.global_rank == 0:
-            self.logger.experiment.log({"pretrain_loss": loss.item()})
-
-        return loss
+        # loss = self.loss(output_a, output_b)
 
     def training_epoch_end(self, outputs) -> None:
         dirpath = os.path.join(self.config['base_dir'], 'model')
@@ -152,12 +232,7 @@ class LightningTrainer(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         if self.global_rank == 0:
             rpz, fea, label = batch
-            # coord = []
-            # for b in range(len(rpz)):
-            #     coord.append(F.pad(rpz[b], (1, 0), 'constant', value=b))
-            # feat = torch.cat(fea, dim=0)
-            # coord = torch.cat(coord, dim=0)
-            output = self(self.network, fea, rpz)
+            output = self(self.network, fea, rpz, reverse_indices=[])
             return [output.cpu()[::100], label[0].cpu()[::100]]
         else:
             return None
