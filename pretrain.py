@@ -89,9 +89,11 @@ class LightningTrainer(pl.LightningModule):
         coords_b = torch.cat(coords_b, dim=0)
         
         unique_coords_a, unique_inv_a = torch.unique(coords_a, return_inverse=True, dim=0)
-        unique_feats_a = torch_scatter.scatter_max(feats_a, unique_inv_a, dim=0)[0] # 感觉这里 max pooling 不对
+        # unique_feats_a = torch_scatter.scatter_max(feats_a, unique_inv_a, dim=0)[0] # 感觉这里 max pooling 不对
+        unique_feats_a = torch_scatter.scatter_mean(feats_a, unique_inv_a, dim=0)
         unique_coords_b, unique_inv_b = torch.unique(coords_b, return_inverse=True, dim=0)
-        unique_feats_b = torch_scatter.scatter_max(feats_b, unique_inv_b, dim=0)[0]
+        # unique_feats_b = torch_scatter.scatter_max(feats_b, unique_inv_b, dim=0)[0]
+        unique_feats_b = torch_scatter.scatter_mean(feats_b, unique_inv_b, dim=0)
     
         transform = torch.cat(transform, dim=0) 
         
@@ -103,8 +105,8 @@ class LightningTrainer(pl.LightningModule):
         unique_coords_b_transformed = torch.stack(unique_coords_b_transformed, dim=0) # 70308 -> 35517 unique ones
         
         unique_transformed_coords_b, unique_transformed_inv_b = torch.unique(unique_coords_b_transformed, return_inverse=True, dim=0)
-        unique_transformed_feats_b = torch_scatter.scatter_max(unique_feats_b, unique_transformed_inv_b, dim=0)[0]
-        
+        # unique_transformed_feats_b = torch_scatter.scatter_max(unique_feats_b, unique_transformed_inv_b, dim=0)[0]
+        unique_transformed_feats_b = torch_scatter.scatter_mean(unique_feats_b, unique_transformed_inv_b, dim=0)        
         a_cat_b, counts = torch.unique(torch.cat([unique_coords_a, unique_transformed_coords_b]), return_counts=True, dim=0)
         intersect_coords = a_cat_b[torch.where(counts.cpu().gt(1))] # 17 unique intersects
         
