@@ -51,8 +51,11 @@ class FeatureGenerator(nn.Module):
             coords.append(F.pad(coord[b], (1, 0), 'constant', value=b))
         feats = torch.cat(feat, dim=0)
         coords = torch.cat(coords, dim=0)
-        
-        if self.pretrain == False:
+        if self.pretrain == True:
+            feats = self.net(feats)
+            feats = self.compress(feats)
+            return feats, coords
+        else:
             # Shuffle data
             if shuffle is None:
                 shuffle = torch.randperm(feats.shape[0], device=feat[0].device)
@@ -70,19 +73,6 @@ class FeatureGenerator(nn.Module):
             feats, indexs = torch_scatter.scatter_max(feats, unique_inv, dim=0)
             feats = self.compress(feats)
             return feats, unique_coords.type(torch.int64)
-        else:
-            # No shuffle
-            if reverse_indices is None:
-                unique_coords, unique_inv = torch.unique(coords, return_inverse=True, dim=0)
-                feats = self.net(feats)
-                feats = torch_scatter.scatter_max(feats, unique_inv, dim=0)[0]
-                feats = self.compress(feats)
-                return feats, unique_coords.type(torch.int64)
-            else:
-                # If validation for pretraining
-                feats = self.net(feats)
-                feats = self.compress(feats)
-                return feats, coords
        
 class AsymmetricUNet(nn.Module):
     def __init__(self,
@@ -118,6 +108,8 @@ class AsymmetricUNet(nn.Module):
         ret = spconv.SparseConvTensor(voxel_features, coors.int(), self.spatial_shape, batch_size)
         ret = self.contextBlock(ret)
         
+        # N > 0 assert faild. CUDA kernel launch blocks must be positive, but got N = 0
+        # 输入维度太少了就会在以下过程中出现这个问题
         down1c, down1b = self.resBlock0(ret)
         down2c, down2b = self.resBlock1(down1c)
         down3c, down3b = self.resBlock2(down2c)
