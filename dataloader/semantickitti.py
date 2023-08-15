@@ -191,9 +191,10 @@ class Cylindrical(Baseline, prefix='cylindrical'):
             xyz[:, :2] = s * xyz[:, :2]
             all_xyz[:, :2] = s * all_xyz[:, :2]
 
-        if 'noise' in methods:
-            noise = np.array([np.random.normal(0, 0.1, 1), np.random.normal(0, 0.1, 1), np.random.normal(0, 0.1, 1)]).T
-            xyz[:, :3] += noise
+        # if 'noise' in methods:
+        #     noise = np.array([np.random.normal(0, 0.1, 1), np.random.normal(0, 0.1, 1), np.random.normal(0, 0.1, 1)]).T
+        #     xyz[:, :3] += noise
+        #     all_xyz[:, :3] += noise
         return xyz, all_xyz
     
     def get_cylindrical_scene(self, xyzr, label, aug_methods):
@@ -325,16 +326,9 @@ class CylindricalTwin(Cylindrical, prefix='cylindrical_twin'):
 
             all_rpz_transformed = self.cart2cyl(all_xyz_transformed)
             clipped_rpz_transformed = np.clip(all_rpz_transformed, self.min_bound, self.max_bound)
-            
             # (5529600, 3) -> unique (1712364, 3)
             rpz_transformed_discrete = (np.floor((clipped_rpz_transformed - self.min_bound) / self.drpz)).astype(np.int64)
-            # all_rpz_discrete = np.array([[[[r, p, z] for r in r_idx] for p in p_idx] for z in z_idx]).reshape(5529600,3).astype(np.int64)
             
-            # indexs of all_rpz -> rpz_transformed_discrete
-            
-            # nope, we need the reverse of this?
-            # transform = np.array([a[0] + (a[1] + a[2] * self.spatial_shape[1]) * self.spatial_shape[0] for a in rpz_transformed_discrete])
-        
         else:
             rpz_transformed_discrete = None
             
@@ -344,6 +338,7 @@ class CylindricalTwin(Cylindrical, prefix='cylindrical_twin'):
         
         center = (rpz_discrete.astype(np.float32) + 0.5) * self.drpz + self.min_bound
         centered_rpz = rpz - center
+        # feature <- (rpz - center, rpz, xyz, intensity)
         fea = np.concatenate((centered_rpz, rpz, xyz[:, :2], intensity.reshape(-1, 1)), axis=1)
         return torch.from_numpy(rpz_discrete), \
                torch.from_numpy(fea).float(), \

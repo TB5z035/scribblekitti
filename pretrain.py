@@ -63,10 +63,10 @@ class LightningTrainer(pl.LightningModule):
         self.loss = PRETRAIN_LOSS[loss_type](self.network.feature_size, **self.config['pretrain_loss'])
 
         self.save_hyperparameters('config')
-        self.feat_cache_a = torch.zeros((12000, 9))
-        self.feat_cache_b = torch.zeros((12000, 9))
-        self.rpz_cache_a = torch.zeros((12000, 3))
-        self.rpz_cache_b = torch.zeros((12000, 3))
+        self.feat_cache_a = torch.zeros((22000, 9))
+        self.feat_cache_b = torch.zeros((22000, 9))
+        self.rpz_cache_a = torch.zeros((22000, 3))
+        self.rpz_cache_b = torch.zeros((22000, 3))
         self.cache_count = 0
 
     def forward(self, model, fea, pos, reverse_indices=None):
@@ -117,9 +117,9 @@ class LightningTrainer(pl.LightningModule):
         # select the intersects respectively
         mask_b = np.where((unique_transformed_coords_b[:, None] == coords_a_filtered).all(-1).any(-1).cpu() == True)[0]
         feats_b_filtered = unique_transformed_feats_b[mask_b]
-        coords_b_filtered = unique_transformed_coords_b[mask_b][:,:3]
+        coords_b_filtered = unique_transformed_coords_b[mask_b][:,1:]
         
-        coords_a_filtered = coords_a_filtered[:,:3]
+        coords_a_filtered = coords_a_filtered[:,1:]
         
         for i in range(feats_a_filtered.shape[0]):
             self.feat_cache_a[i + self.cache_count] = feats_a_filtered[i]
@@ -132,15 +132,15 @@ class LightningTrainer(pl.LightningModule):
         
         print("# uniquified voxels = " , self.cache_count)
         
-        if self.cache_count > 10000:
-            output_a = self(self.network, (self.feat_cache_a[:10000].cuda(),), (self.rpz_cache_a[:10000].cuda(),))
-            output_b = self(self.network, (self.feat_cache_b[:10000].cuda(),), (self.rpz_cache_b[:10000].cuda(),))
+        if self.cache_count > 20000:
+            output_a = self(self.network, (self.feat_cache_a[:20000].cuda(),), (self.rpz_cache_a[:20000].cuda(),))
+            output_b = self(self.network, (self.feat_cache_b[:20000].cuda(),), (self.rpz_cache_b[:20000].cuda(),))
             loss = self.loss(output_a, output_b)
             self.cache_count = 0
-            self.feat_cache_a = torch.zeros((12000, 9))
-            self.feat_cache_b = torch.zeros((12000, 9))
-            self.rpz_cache_a = torch.zeros((12000, 3))
-            self.rpz_cache_b = torch.zeros((12000, 3))
+            self.feat_cache_a = torch.zeros((22000, 9))
+            self.feat_cache_b = torch.zeros((22000, 9))
+            self.rpz_cache_a = torch.zeros((22000, 3))
+            self.rpz_cache_b = torch.zeros((22000, 3))
             self.log('pretrain_loss', loss, prog_bar=True)
             if self.global_rank == 0:
                 self.logger.experiment.log({"pretrain_loss": loss.item()})
