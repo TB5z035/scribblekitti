@@ -51,7 +51,7 @@ class LightningTrainer(pl.LightningModule):
         self.save_hyperparameters('config')
 
     def forward(self, model, fea, pos, batch_size):
-        output_voxel, _ = model(fea, pos, batch_size)
+        output_voxel, _ , _, _= model(fea, pos, batch_size)
         outputs = []
         for i in range(batch_size):
             outputs.append(output_voxel[i, :, pos[i][:, 0], pos[i][:, 1], pos[i][:, 2]])
@@ -85,7 +85,7 @@ class LightningTrainer(pl.LightningModule):
         teacher_label = torch.cat(teacher_label, dim=0)
 
         student_output = self(self.student, student_fea, student_rpz, batch_size)
-        teacher_output = self(self.teacher, teacher_fea, teacher_rpz, batch_size)
+        teacher_output= self(self.teacher, teacher_fea, teacher_rpz, batch_size)
 
         loss = self.loss_cl(student_output, teacher_output, student_label) + \
                self.loss_ls(student_output.softmax(1), student_label, ignore=0)

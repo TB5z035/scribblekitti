@@ -139,7 +139,7 @@ class Cylindrical(Baseline, prefix='cylindrical'):
         r_idx = np.arange(self.spatial_shape[0])
         p_idx = np.arange(self.spatial_shape[1])
         z_idx = np.arange(self.spatial_shape[2])
-        all_rpz = np.array([[[[r * self.drpz[0], p * self.drpz[1], z * self.drpz[2]] for r in r_idx] for p in p_idx] for z in z_idx]).reshape(5529600,3)
+        all_rpz = np.array([[[[self.min_bound[0] + r * self.drpz[0] + self.drpz[0]/2, self.min_bound[1] + p * self.drpz[1] + self.drpz[1]/2, self.min_bound[2] + z * self.drpz[2] + self.drpz[2]/2] for r in r_idx] for p in p_idx] for z in z_idx]).reshape(5529600,3)
         self.all_xyz = self.cyl2cart(all_rpz)
 
 
@@ -164,6 +164,34 @@ class Cylindrical(Baseline, prefix='cylindrical'):
         x = np.multiply(rpz[:, 0], np.cos(rpz[:, 1]))
         y = np.multiply(rpz[:, 0], np.sin(rpz[:, 1]))
         return np.stack((x, y, rpz[:, 2]), axis=1)
+    
+    # @staticmethod
+    # def augment_on_rpz(rpz, all_rpz, methods):
+    #     if 'rotate' in methods:
+    #         angle = np.deg2rad(np.random.random() * 90) - np.pi / 4
+    #         rpz[:, 1] += angle
+    #         all_rpz[:, 1] += angle
+        
+    #     if 'flip' in methods:
+    #         direction = np.random.choice(4, 1)
+    #         if direction == 1:
+    #             rpz[:, 0] = -rpz[:, 0]
+    #         elif direction == 2:
+                
+    #         elif direction == 3:
+            
+            
+    #     if 'scale' in methods:
+    #         s = np.random.uniform(0.95, 1.05)
+    #         rpz[:, 0] = s * rpz[:, 0]
+    #         t = np.random.uniform(0.95, 1.05)
+    #         rpz[:, 2] = t * rpz[:, 2]
+        
+    #     if 'noise' in methods:
+    #         noise = np.array([np.random.normal(0, 0.1, 1), np.random.normal(0, 0.1, 1), np.random.normal(0, 0.1, 1)]).T
+    #         rpz[:, :2] += noise
+            
+    #     return rpz, all_rpz
 
     @staticmethod
     def double_augment(xyz, all_xyz, methods):
@@ -302,7 +330,7 @@ class CylindricalTwin(Cylindrical, prefix='cylindrical_twin'):
         xyzr = self.get_lidar(idx)
         label = self.get_label(idx)
         return [
-            self.get_cylindrical_scene(xyzr, label, []),
+            self.get_cylindrical_scene(xyzr, label, self.config.get('aug', None)),
             self.get_cylindrical_scene(xyzr, label, self.config.get('aug', None)),
         ]
     @staticmethod
@@ -317,21 +345,24 @@ class CylindricalTwin(Cylindrical, prefix='cylindrical_twin'):
     
     def get_cylindrical_scene(self, xyzr, label, aug_methods):
         xyz, intensity = xyzr[:, :3], xyzr[:, 3]
-        # all voxels indexs
-        
-        if len(aug_methods) != 0:
-            
-            if self.split == 'train':
-                xyz, all_xyz_transformed = self.double_augment(xyz, self.all_xyz, aug_methods)
 
-            all_rpz_transformed = self.cart2cyl(all_xyz_transformed)
-            clipped_rpz_transformed = np.clip(all_rpz_transformed, self.min_bound, self.max_bound)
-            # (5529600, 3) -> unique (1712364, 3)
-            rpz_transformed_discrete = (np.floor((clipped_rpz_transformed - self.min_bound) / self.drpz)).astype(np.int64)
-            
-        else:
-            rpz_transformed_discrete = None
-            
+        if self.split == 'train':
+            # rpz = self.cart2cyl(xyz)
+            # clipped_rpz = np.clip(rpz, self.min_bound, self.max_bound)
+            # rpz_discrete = (np.floor((clipped_rpz - self.min_bound) / self.drpz)).astype(np.int64)
+            # # assume that after transform the points will belong to the same voxel
+            # uniqued_rpz, unique_inv = np.unique(rpz_discrete, return_inverse=True, axis=0)
+            # xyz = self.augment(xyz, aug_methods)
+            if len(aug_methods) != 0:
+                xyz, all_xyz_transformed = self.double_augment(xyz, self.all_xyz, aug_methods)
+                all_rpz_transformed = self.cart2cyl(all_xyz_transformed)
+                clipped_rpz_transformed = np.clip(all_rpz_transformed, self.min_bound, self.max_bound)
+                # (5529600, 3) -> unique (1712364, 3)
+                rpz_transformed_discrete = (np.floor((clipped_rpz_transformed - self.min_bound) / self.drpz)).astype(np.int64)
+            else:
+                # unique_inv = None 
+                rpz_transformed_discrete = None
+
         rpz = self.cart2cyl(xyz)
         clipped_rpz = np.clip(rpz, self.min_bound, self.max_bound)
         rpz_discrete = (np.floor((clipped_rpz - self.min_bound) / self.drpz)).astype(np.int64)

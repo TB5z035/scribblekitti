@@ -63,18 +63,19 @@ class LightningTrainer(pl.LightningModule):
         self.loss = PRETRAIN_LOSS[loss_type](self.network.feature_size, **self.config['pretrain_loss'])
 
         self.save_hyperparameters('config')
-        self.feat_cache_a = torch.zeros((22000, 9))
-        self.feat_cache_b = torch.zeros((22000, 9))
-        self.rpz_cache_a = torch.zeros((22000, 3))
-        self.rpz_cache_b = torch.zeros((22000, 3))
-        self.cache_count = 0
+        # self.feat_cache_a = torch.zeros((25000, 9))
+        # self.feat_cache_b = torch.zeros((25000, 9))
+        # self.rpz_cache_a = torch.zeros((25000, 3))
+        # self.rpz_cache_b = torch.zeros((25000, 3))
+        # self.cache_count = 0
 
     def forward(self, model, fea, pos, reverse_indices=None):
-        _, features = model(fea, pos, len(fea), unique_invs=reverse_indices)
-        return features
+        _, features, features2, features3 = model(fea, pos, len(fea), unique_invs=reverse_indices)
+        return features, features2, features3
 
     def training_step(self, batch, batch_idx):
         (rpz_a, fea_a, label_a, transform), (rpz_b, fea_b, label_b, _) = batch
+        # (rpz_a, fea_a, label_a, _), (rpz_b, fea_b, label_b, unique_inv) = batch
         
         coords_a = []
         for b in range(len(rpz_a)):
@@ -88,16 +89,21 @@ class LightningTrainer(pl.LightningModule):
         feats_b = torch.cat(fea_b, dim=0)
         coords_b = torch.cat(coords_b, dim=0)
         
+        # unique_inv = torch.cat(unique_inv, dim=0)
+        
+        # output_a = self(self.network, fea_a, rpz_a, reverse_indices=unique_inv)
+        # output_b = self(self.network, fea_b, rpz_b, reverse_indices=unique_inv)
+        
+        # print("output length = ", output_a.shape[0])
+        
+        # loss = self.loss(output_a, output_b)
+        
         unique_coords_a, unique_inv_a = torch.unique(coords_a, return_inverse=True, dim=0)
-        # unique_feats_a = torch_scatter.scatter_max(feats_a, unique_inv_a, dim=0)[0] # 感觉这里 max pooling 不对
         unique_feats_a = torch_scatter.scatter_mean(feats_a, unique_inv_a, dim=0)
         unique_coords_b, unique_inv_b = torch.unique(coords_b, return_inverse=True, dim=0)
-        # unique_feats_b = torch_scatter.scatter_max(feats_b, unique_inv_b, dim=0)[0]
         unique_feats_b = torch_scatter.scatter_mean(feats_b, unique_inv_b, dim=0)
     
-        transform = torch.cat(transform, dim=0) 
-        
-        # transform b by the transformation that has done by a
+        transform = torch.cat(transform, dim=0)
         
         unique_coords_b_transformed = []
         for i in unique_coords_b:
@@ -105,7 +111,6 @@ class LightningTrainer(pl.LightningModule):
         unique_coords_b_transformed = torch.stack(unique_coords_b_transformed, dim=0) # 70308 -> 35517 unique ones
         
         unique_transformed_coords_b, unique_transformed_inv_b = torch.unique(unique_coords_b_transformed, return_inverse=True, dim=0)
-        # unique_transformed_feats_b = torch_scatter.scatter_max(unique_feats_b, unique_transformed_inv_b, dim=0)[0]
         unique_transformed_feats_b = torch_scatter.scatter_mean(unique_feats_b, unique_transformed_inv_b, dim=0)        
         a_cat_b, counts = torch.unique(torch.cat([unique_coords_a, unique_transformed_coords_b]), return_counts=True, dim=0)
         intersect_coords = a_cat_b[torch.where(counts.cpu().gt(1))] # 17 unique intersects
@@ -117,35 +122,55 @@ class LightningTrainer(pl.LightningModule):
         # select the intersects respectively
         mask_b = np.where((unique_transformed_coords_b[:, None] == coords_a_filtered).all(-1).any(-1).cpu() == True)[0]
         feats_b_filtered = unique_transformed_feats_b[mask_b]
-        coords_b_filtered = unique_transformed_coords_b[mask_b][:,1:]
+        coords_b_filtered = unique_transformed_coords_b[mask_b] #[:,1:]
         
-        coords_a_filtered = coords_a_filtered[:,1:]
+        # coords_a_filtered = coords_a_filtered[:,1:]
         
-        for i in range(feats_a_filtered.shape[0]):
-            self.feat_cache_a[i + self.cache_count] = feats_a_filtered[i]
-            self.feat_cache_b[i + self.cache_count] = feats_b_filtered[i]
-            self.rpz_cache_a[i + self.cache_count] = coords_a_filtered[i]
-            self.rpz_cache_b[i + self.cache_count] = coords_b_filtered[i]
+        # import IPython
+        # IPython.embed()
         
-        # cache the features and compute loss when it's big enough
-        self.cache_count += feats_a_filtered.shape[0]
+        mask_scene0 = np.where(unique_coords_a[:,0].cpu() == 0)[0]
+        fea_a_scene0 = feats_a_filtered[:mask_scene0[-1]+1]
+        coo_a_scene0 = coords_a_filtered[:mask_scene0[-1]+1, 1:]
+        fea_b_scene0 = feats_b_filtered[:mask_scene0[-1]+1]
+        coo_b_scene0 = coords_b_filtered[:mask_scene0[-1]+1, 1:]
         
-        print("# uniquified voxels = " , self.cache_count)
+        # mask_scene1 = np.where(unique_coords_a[:,0].cpu() == 1)[0]
+        fea_a_scene1 = feats_a_filtered[mask_scene0[-1]+1:]
+        coo_a_scene1 = coords_a_filtered[mask_scene0[-1]+1:, 1:]
+        fea_b_scene1 = feats_b_filtered[mask_scene0[-1]+1:]
+        coo_b_scene1 = coords_b_filtered[mask_scene0[-1]+1:, 1:]
         
-        if self.cache_count > 20000:
-            output_a = self(self.network, (self.feat_cache_a[:20000].cuda(),), (self.rpz_cache_a[:20000].cuda(),))
-            output_b = self(self.network, (self.feat_cache_b[:20000].cuda(),), (self.rpz_cache_b[:20000].cuda(),))
-            loss = self.loss(output_a, output_b)
-            self.cache_count = 0
-            self.feat_cache_a = torch.zeros((22000, 9))
-            self.feat_cache_b = torch.zeros((22000, 9))
-            self.rpz_cache_a = torch.zeros((22000, 3))
-            self.rpz_cache_b = torch.zeros((22000, 3))
-            self.log('pretrain_loss', loss, prog_bar=True)
-            if self.global_rank == 0:
-                self.logger.experiment.log({"pretrain_loss": loss.item()})
-        else:
-            return
+        # for i in range(feats_a_filtered.shape[0]):
+        #     self.feat_cache_a[i + self.cache_count] = feats_a_filtered[i]
+        #     self.feat_cache_b[i + self.cache_count] = feats_b_filtered[i]
+        #     self.rpz_cache_a[i + self.cache_count] = coords_a_filtered[i]
+        #     self.rpz_cache_b[i + self.cache_count] = coords_b_filtered[i]
+        
+        # # cache the features and compute loss when it's big enough
+        # self.cache_count += feats_a_filtered.shape[0]
+        
+        # print("# uniquified voxels = " , self.cache_count)
+        
+        # # if self.cache_count > 20000:
+        #     output_a = self(self.network, (self.feat_cache_a[:20000].cuda(),), (self.rpz_cache_a[:20000].cuda(),))
+        #     output_b = self(self.network, (self.feat_cache_b[:20000].cuda(),), (self.rpz_cache_b[:20000].cuda(),))
+        # output_a, out_a1, out_a2 = self(self.network, (feats_a_filtered,), (coords_a_filtered,))
+        # output_b, out_b1, out_b2 = self(self.network, (feats_b_filtered,), (coords_b_filtered,))
+        output_a, out_a1, out_a2 = self(self.network, (fea_a_scene0, fea_a_scene1), (coo_a_scene0, coo_a_scene1))
+        output_b, out_b1, out_b2 = self(self.network, (fea_b_scene0, fea_b_scene1), (coo_b_scene0, coo_b_scene1))
+        # loss = self.loss(output_a, output_b) + self.loss(out_a1, out_b1) + self.loss(out_a2, out_b2) * 0.2
+        loss = self.loss(output_a, output_b)
+        # self.cache_count = 0
+        # self.feat_cache_a = torch.zeros((25000, 9))
+        # self.feat_cache_b = torch.zeros((25000, 9))
+        # self.rpz_cache_a = torch.zeros((25000, 3))
+        # self.rpz_cache_b = torch.zeros((25000, 3))
+        self.log('# voxels', feats_a_filtered.shape[0], prog_bar=True)
+        # if self.global_rank == 0:
+        self.logger.experiment.log({"pretrain_loss": loss.item()})
+        # else:
+        #     return
 
         return loss
     
@@ -227,14 +252,18 @@ class LightningTrainer(pl.LightningModule):
         torch.save(self.network.state_dict(), os.path.join(dirpath, f'{self.current_epoch}.ckpt'))
 
     def validation_step(self, batch, batch_idx):
+        # pass
         if self.global_rank == 0:
             rpz, fea, label = batch
-            output = self(self.network, fea, rpz, reverse_indices=[])
-            return [output.cpu()[::100], label[0].cpu()[::100]]
+            output, _, _ = self(self.network, fea, rpz)
+            # import IPython
+            # IPython.embed()
+            return [output.cpu()[::10], label[0].cpu()[::10]]
         else:
             return None
 
     def validation_epoch_end(self, outputs) -> None:
+        # pass
         if self.global_rank == 0:
             feats = [item for sublist in outputs for item in sublist][0::2]
             labels = [item for sublist in outputs for item in sublist][1::2]
@@ -300,7 +329,7 @@ if __name__ == '__main__':
     with open(os.path.join(base_dir, 'command'), 'w') as f:
         print(sys.argv, file=f) 
     config['base_dir'] = base_dir
-
+    torch.cuda.set_device(3)
     wandb_logger = WandbLogger(config=config, save_dir=config['trainer']['default_root_dir'], **config['logger'])
     model = LightningTrainer(config=config)
     Trainer(logger=wandb_logger, callbacks=model.get_model_callback(), **config['trainer']).fit(model)

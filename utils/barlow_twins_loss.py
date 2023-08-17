@@ -34,35 +34,30 @@ class BarlowTwinsLoss(TwinsLoss):
         super().__init__()
         self.coef = coef
         self.bn = torch.nn.BatchNorm1d(num_features, affine=False)
+        self.bn2 = torch.nn.BatchNorm1d(num_features * 2, affine=False)
+        self.bn3 = torch.nn.BatchNorm1d(num_features * 4, affine=False)
 
     def forward(self, feature_a, feature_b):
-        # feature [B, d]
-        # feature_a / feature_b -> (batch_size, feature_size)
-        
-        # start_forward = time.time()
-        
         batch_size, feature_size = self._assert_feat(feature_a, feature_b)
-        if batch_size > 1:
+        if feature_size == 128:
             feature_a = self.bn(feature_a)
             feature_b = self.bn(feature_b)
-        
-        # print("tick1", time.time() - start_forward)
+        elif feature_size == 256:
+            feature_a = self.bn2(feature_a)
+            feature_b = self.bn2(feature_b)
+        else:
+            feature_a = self.bn3(feature_a)
+            feature_b = self.bn3(feature_b)
 
         cross_correlation = feature_a.T @ feature_b # [d, d]
         torch.distributed.all_reduce(cross_correlation) 
         cross_correlation.div_(torch.distributed.get_world_size())
         
-        # print("tick2", time.time() - start_forward)
-        
         down = (feature_a.pow(2).sum(dim=0, keepdim=True).sqrt().T) @ (feature_b.pow(2).sum(dim=0, keepdim=True).sqrt())
         cross_correlation.div_(down)
-
-        # print("tick3", time.time() - start_forward)
         
         on_diag = torch.diagonal(cross_correlation).add_(-1).pow_(2).sum().div(feature_size)
         off_diag = off_diagonal(cross_correlation).pow_(2).sum().div((feature_size - 1) ** 2)
-        
-        # print("tick4", time.time() - start_forward)
 
         loss = on_diag + self.coef * off_diag
 
