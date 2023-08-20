@@ -330,7 +330,7 @@ class CylindricalTwin(Cylindrical, prefix='cylindrical_twin'):
         xyzr = self.get_lidar(idx)
         label = self.get_label(idx)
         return [
-            self.get_cylindrical_scene(xyzr, label, self.config.get('aug', None)),
+            self.get_cylindrical_scene(xyzr, label, []),
             self.get_cylindrical_scene(xyzr, label, self.config.get('aug', None)),
         ]
     @staticmethod
