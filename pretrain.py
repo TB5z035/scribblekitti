@@ -94,18 +94,16 @@ class LightningTrainer(pl.LightningModule):
         unique_feats_a = torch_scatter.scatter_mean(feats_a, unique_inv_a, dim=0)
         unique_coords_b, unique_inv_b = torch.unique(coords_b, return_inverse=True, dim=0)
         unique_feats_b = torch_scatter.scatter_mean(feats_b, unique_inv_b, dim=0)
-    
-        transform = torch.cat(transform, dim=0)
         
         unique_coords_b_transformed = []
         for i in unique_coords_b:
-            unique_coords_b_transformed.append(F.pad(transform[i[0] * 5529600 + i[1] + (i[2] + i[3] * 360) * 480], (1, 0), 'constant', value=i[0]))
+            unique_coords_b_transformed.append(F.pad(transform[i[0]][i[1] + (i[2] + i[3] * 360) * 480], (1, 0), 'constant', value=i[0]))
         unique_coords_b_transformed = torch.stack(unique_coords_b_transformed, dim=0)
         
         unique_transformed_coords_b, unique_transformed_inv_b = torch.unique(unique_coords_b_transformed, return_inverse=True, dim=0)
-        unique_transformed_feats_b = torch_scatter.scatter_mean(unique_feats_b, unique_transformed_inv_b, dim=0)        
+        unique_transformed_feats_b = torch_scatter.scatter_mean(unique_feats_b, unique_transformed_inv_b, dim=0)
         a_cat_b, counts = torch.unique(torch.cat([unique_coords_a, unique_transformed_coords_b]), return_counts=True, dim=0)
-        intersect_coords = a_cat_b[torch.where(counts.cpu().gt(1))] 
+        intersect_coords = a_cat_b[torch.where(counts.cpu().gt(1))]
         
         mask_a = (unique_coords_a[:, None].cpu() == intersect_coords.cpu()).all(-1).any(-1).cuda()
         feats_a_filtered = unique_feats_a[mask_a]
@@ -116,12 +114,9 @@ class LightningTrainer(pl.LightningModule):
         feats_b_filtered = unique_transformed_feats_b[mask_b]
         coords_b_filtered = unique_transformed_coords_b[mask_b] 
         
-        # import IPython
-        # IPython.embed()
-        
         assert feats_a_filtered.shape[0] == feats_b_filtered.shape[0], "filtered voxel number doesn't match"
         
-        mask_scene0 = np.where(unique_coords_a[:,0].cpu() == 0)[0]
+        mask_scene0 = np.where(coords_a_filtered[:,0].cpu() == 0)[0]
         fea_a_scene0 = feats_a_filtered[:mask_scene0[-1]+1]
         coo_a_scene0 = coords_a_filtered[:mask_scene0[-1]+1, 1:]
         fea_b_scene0 = feats_b_filtered[:mask_scene0[-1]+1]

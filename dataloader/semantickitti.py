@@ -3,7 +3,7 @@ import os
 import numpy as np
 import torch
 from torch.utils.data import Dataset
-
+import copy
 
 class SemanticKITTI(Dataset):
     _registry = {}
@@ -354,13 +354,14 @@ class CylindricalTwin(Cylindrical, prefix='cylindrical_twin'):
             # uniqued_rpz, unique_inv = np.unique(rpz_discrete, return_inverse=True, axis=0)
             # xyz = self.augment(xyz, aug_methods)
             if len(aug_methods) != 0:
-                xyz, all_xyz_transformed = self.double_augment(xyz, self.all_xyz, aug_methods)
+                all_xyz_ = copy.deepcopy(self.all_xyz)
+                xyz, all_xyz_transformed = self.double_augment(xyz, all_xyz_, aug_methods)
                 all_rpz_transformed = self.cart2cyl(all_xyz_transformed)
                 clipped_rpz_transformed = np.clip(all_rpz_transformed, self.min_bound, self.max_bound)
                 # (5529600, 3) -> unique (1712364, 3)
                 rpz_transformed_discrete = (np.floor((clipped_rpz_transformed - self.min_bound) / self.drpz)).astype(np.int64)
             else:
-                # unique_inv = None 
+                # unique_inv = None
                 rpz_transformed_discrete = None
 
         rpz = self.cart2cyl(xyz)
