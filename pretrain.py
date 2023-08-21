@@ -70,7 +70,6 @@ class LightningTrainer(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         (rpz_a, fea_a, label_a, transform), (rpz_b, fea_b, label_b, _) = batch
-        # (rpz_a, fea_a, label_a, _), (rpz_b, fea_b, label_b, unique_inv) = batch
         
         coords_a = []
         for b in range(len(rpz_a)):
@@ -85,13 +84,10 @@ class LightningTrainer(pl.LightningModule):
         coords_b = torch.cat(coords_b, dim=0)
         
         # for voxel-wise contrastive loss
+        # (rpz_a, fea_a, label_a, _), (rpz_b, fea_b, label_b, unique_inv) = batch
         # unique_inv = torch.cat(unique_inv, dim=0)
-        
         # output_a = self(self.network, fea_a, rpz_a, reverse_indices=unique_inv)
         # output_b = self(self.network, fea_b, rpz_b, reverse_indices=unique_inv)
-        
-        # print("output length = ", output_a.shape[0])
-        
         # loss = self.loss(output_a, output_b)
         
         unique_coords_a, unique_inv_a = torch.unique(coords_a, return_inverse=True, dim=0)
@@ -119,6 +115,9 @@ class LightningTrainer(pl.LightningModule):
         mask_b = np.where((unique_transformed_coords_b[:, None].cpu() == coords_a_filtered.cpu()).all(-1).any(-1) == True)[0]
         feats_b_filtered = unique_transformed_feats_b[mask_b]
         coords_b_filtered = unique_transformed_coords_b[mask_b] 
+        
+        # import IPython
+        # IPython.embed()
         
         assert feats_a_filtered.shape[0] == feats_b_filtered.shape[0], "filtered voxel number doesn't match"
         
