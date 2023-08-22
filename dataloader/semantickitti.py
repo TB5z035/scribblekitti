@@ -38,6 +38,7 @@ class Baseline(SemanticKITTI, prefix='baseline'):
     def load_file_paths(self, split='train', label_directory='labels'):
         self.lidar_paths = []
         self.label_paths = []
+        self.cluster_paths = []
         for seq in self.config['split'][split]:
             seq = '{0:02d}'.format(int(seq))
 
@@ -49,8 +50,16 @@ class Baseline(SemanticKITTI, prefix='baseline'):
             label_paths = [os.path.join(dp, f) for dp, dn, fn in os.walk(os.path.expanduser(label_dir)) for f in fn if f.endswith('.label')]
             assert (len(lidar_paths) == len(label_paths))
             self.label_paths.extend(label_paths)
+            
+            if split == 'train':
+                cluster_dir = os.path.join(self.root_dir, seq, 'LESS_230810_add_z_sort', 'cluster')
+                cluster_paths = [os.path.join(dp, f) for dp, dn, fn in os.walk(os.path.expanduser(cluster_dir)) for f in fn if f.endswith('.label')]
+                assert (len(cluster_paths) == len(label_paths)), f'in dir {cluster_dir}, len cluster_paths {len(cluster_paths)} doesn\'t match len label_paths {len(label_paths)}'
+                self.cluster_paths.extend(cluster_paths)
+            
         self.lidar_paths.sort()
         self.label_paths.sort()
+        self.cluster_paths.sort()
 
     def __getitem__(self, idx):
         xyzr = self.get_lidar(idx)
@@ -78,6 +87,11 @@ class Baseline(SemanticKITTI, prefix='baseline'):
         label = np.fromfile(label_path, dtype=np.int32)
         label = label.reshape((-1)) & 0xFFFF
         return self.map_label(label, self.config['learning_map'])
+
+    def get_cluster(self, idx):
+        cluster_path = self.cluster_paths[idx]
+        cluster = np.fromfile(cluster_path, dtype=np.int32)
+        return cluster.reshape((-1))
 
     @staticmethod
     def map_label(label, map_dict):
@@ -122,7 +136,13 @@ class Baseline(SemanticKITTI, prefix='baseline'):
             xyz[:, :2] = s * xyz[:, :2]
 
         if 'noise' in methods:
-            noise = np.array([np.random.normal(0, 0.1, 1), np.random.normal(0, 0.1, 1), np.random.normal(0, 0.1, 1)]).T
+            # TODO: add noise propotional to x,y,z range (5%)
+            # x, y 5, z [-3, 3] 0.1
+            # print(f'x max {np.max(xyz[:, 0])}, min {np.min(xyz[:, 0])}')
+            # print(f'y max {np.max(xyz[:, 1])}, min {np.min(xyz[:, 1])}')
+            # print(f'z max {np.max(xyz[:, 2])}, min {np.min(xyz[:, 2])}')
+            noise = np.array([np.random.normal(0, 3, (xyz.shape[0])), np.random.normal(0, 3, (xyz.shape[0])), np.random.normal(0, 0.1, (xyz.shape[0]))]).T
+            # noise = np.array([np.random.normal(0, 0.1, 1), np.random.normal(0, 0.1, 1), np.random.normal(0, 0.1, 1)]).T
             xyz[:, :3] += noise
         return xyz
 
@@ -220,9 +240,10 @@ class Cylindrical(Baseline, prefix='cylindrical'):
             all_xyz[:, :2] = s * all_xyz[:, :2]
 
         # if 'noise' in methods:
-        #     noise = np.array([np.random.normal(0, 0.1, 1), np.random.normal(0, 0.1, 1), np.random.normal(0, 0.1, 1)]).T
-        #     xyz[:, :3] += noise
-        #     all_xyz[:, :3] += noise
+            # TODO: add point-wise arbitrary niose, 5% to data range
+            # noise = np.array([np.random.normal(0, 0.1, 1), np.random.normal(0, 0.1, 1), np.random.normal(0, 0.1, 1)]).T
+            # xyz[:, :3] += noise
+            # all_xyz[:, :3] += noise
         return xyz, all_xyz
     
     def get_cylindrical_scene(self, xyzr, label, aug_methods):
@@ -324,6 +345,28 @@ class PLSCylindricalSample(PLSCylindrical, prefix='pls_cylindrical_sample'):
 class PLSCylindricalMT(CylindricalMT, PLSCylindrical, prefix='pls_cylindrical_mt'):
     pass
 
+class CylindricalCluster(Cylindrical, prefix='cylindrical_cluster'):
+    def __getitem__(self, idx):
+        xyzr = self.get_lidar(idx)
+        label = self.get_label(idx)
+        cluster = self.get_cluster(idx)
+        return [
+            self.get_cylindrical_scene(xyzr, label, self.config.get('aug', None)),
+            self.get_cylindrical_scene(xyzr, label, self.config.get('aug', None)),
+            cluster
+        ]
+    @staticmethod
+    def _collate_fn(batch):
+        list_branch_1, list_branch_2, cluster = zip(*batch)
+        stu_xyzrs, stu_feas, stu_labels = zip(*list_branch_1)
+        tea_xyzrs, tea_feas, tea_labels = zip(*list_branch_2)
+        return [
+            (tea_xyzrs, tea_feas, tea_labels),
+            (stu_xyzrs, stu_feas, stu_labels),
+            cluster
+        ]
+        
+
 class CylindricalTwin(Cylindrical, prefix='cylindrical_twin'):
 
     def __getitem__(self, idx):
@@ -331,16 +374,16 @@ class CylindricalTwin(Cylindrical, prefix='cylindrical_twin'):
         label = self.get_label(idx)
         return [
             self.get_cylindrical_scene(xyzr, label, []),
-            self.get_cylindrical_scene(xyzr, label, self.config.get('aug', None)),
+            self.get_cylindrical_scene(xyzr, label, self.config.get('aug', None))
         ]
     @staticmethod
     def _collate_fn(batch):
-        list_branch_1, list_branch_2 = zip(*batch)
+        list_branch_1, list_branch_2, cluster = zip(*batch)
         stu_xyzrs, stu_feas, stu_labels, stu_rpzs = zip(*list_branch_1)
         tea_xyzrs, tea_feas, tea_labels, tea_rpzs = zip(*list_branch_2)
         return [
             (tea_xyzrs, tea_feas, tea_labels, tea_rpzs),
-            (stu_xyzrs, stu_feas, stu_labels, stu_rpzs)
+            (stu_xyzrs, stu_feas, stu_labels, stu_rpzs),
         ]
     
     def get_cylindrical_scene(self, xyzr, label, aug_methods):

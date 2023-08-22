@@ -7,8 +7,8 @@ pretrain_loss:
   coef: 0.0001
 
 dataset:
-  root_dir: '/data14/tb5zhh/workspace/datasets/SemanticKITTI/sequences'
-  prefix: cylindrical_twin
+  root_dir: '/data22/tb5zhh/datasets/SemanticKITTI/sequences'
+  prefix: cylindrical_cluster
   spatial_shape: [480,360,32]
   max_bound: [50,3.1415926,2]
   min_bound: [0,-3.1415926,-4]
@@ -16,7 +16,7 @@ dataset:
   bin_size: [[24,9],[48,18],[96,36]]
 
 val_dataset:
-  root_dir: '/data14/tb5zhh/workspace/datasets/SemanticKITTI/sequences'
+  root_dir: '/data22/tb5zhh/datasets/SemanticKITTI/sequences'
   prefix: cylindrical_sample
   spatial_shape: [480,360,32]
   max_bound: [50,3.1415926,2]
@@ -36,7 +36,7 @@ val_dataloader:
 
 trainer:
   max_epochs: 75
-  gpus: [3]
+  gpus: [2]
   check_val_every_n_epoch: 1
   default_root_dir: '/DATA_EDS2/zhangyk2306'
   accelerator: 'ddp'
