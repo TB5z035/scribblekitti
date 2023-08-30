@@ -125,9 +125,12 @@ class LESS():
 
             # read the pose and aggregate scans
             pose = pose_file.readline()
-            r11,r12,r13,t14,r21,r22,r23,t24,r31,r32,r33,t34 = list(map(float, pose.split(' ')))
+            # pose_ = self.read_specific_line_from_file(pose_file,self.scans_cnt)
+            r11, r12, r13, t14, r21, r22, r23, t24, r31, r32, r33, t34 = map(float, pose.split(' '))
             # pose_SE3 = np.array([[r11,r12,r13,t14],[r21,r22,r23,t24],[r31,r32,r33,t34],[0,0,0,1]])
             # pose_SE3_inv = np.linalg.inv(pose_SE3)
+            # R_inv = np.linalg.inv(R)
+            # T_inv = -np.dot(R_inv, T)
             # (r11,r12,r13,t14),(r21,r22,r23,t24),(r31,r32,r33,t34),(_,_,_,_)=pose_SE3_inv
             lidar_data = np.fromfile(lidar_file,dtype=np.float32)
             lidar_data = lidar_data.reshape((-1,4))
@@ -141,10 +144,21 @@ class LESS():
             true_label = true_label.reshape((-1)) & 0xFFFF
             true_label = self.map_label(true_label, self.config['learning_map'])
             # Matrix_RT = np.array([r11,r12,r13,t11],[r21,r22,r23,t12],[r31,r32,r33,t13],[0,0,0,1])
-            
-            # lidar_x = lidar_x*r11 +r12*lidar_y+r13*lidar_z + t14
-            # lidar_y = lidar_x*r21 +r22*lidar_y+r23*lidar_z + t24
-            # lidar_z = lidar_x*r31 +r32*lidar_y+r33*lidar_z + t34
+            original_lidar_x = lidar_x.copy()
+            original_lidar_y = lidar_y.copy()
+            original_lidar_z = lidar_z.copy()
+
+            # lidar_x = original_lidar_x*r11 +r12*original_lidar_y+r13*original_lidar_z + t14
+            # lidar_y = original_lidar_x*r21 +r22*original_lidar_y+r23*original_lidar_z + t24
+            # lidar_z = original_lidar_x*r31 +r32*original_lidar_y+r33*original_lidar_z + t34
+
+            # lidar_x = original_lidar_x*r11 +r21*original_lidar_y+r31*original_lidar_z - t14
+            # lidar_y = original_lidar_x*r12 +r22*original_lidar_y+r32*original_lidar_z - t24
+            # lidar_z = original_lidar_x*r13 +r23*original_lidar_y+r33*original_lidar_z - t34
+
+            lidar_x -= t14
+            lidar_y -= t24
+            lidar_z -= t34
 
             lidar_x = np.expand_dims(lidar_x,axis=1)
             lidar_y = np.expand_dims(lidar_y,axis=1)
@@ -291,8 +305,10 @@ class LESS():
         lidar_ground_max = [np.array([0])]
         z_sort = np.sort(lidar_xyz_unified[:,2])[round(lidar_xyz_unified.shape[0]*self.z_sort_bar)]
         lidar_xyz_to_be_chosen = lidar_xyz_unified[lidar_xyz_unified[:,2]<=z_sort]
-        if lidar_xyz_to_be_chosen.shape[0]<3:
+        if lidar_xyz_to_be_chosen.shape[0]<=3:
             lidar_xyz_to_be_chosen = lidar_xyz_unified
+        if lidar_xyz_unified.shape[0]<=10000:
+            iter_max = 100
         while 1:
             p1 = lidar_xyz_to_be_chosen[random.randint(0,lidar_xyz_to_be_chosen.shape[0]-1),:]
             p2 = lidar_xyz_to_be_chosen[random.randint(0,lidar_xyz_to_be_chosen.shape[0]-1),:]
@@ -446,7 +462,8 @@ class LESS():
         # get N*N distance, N represents the number of remained points
         # if t=10, cannot pass here
         print('points shape is',points.shape,flush=True)
-        distances = cdist(points, points)  # Assuming 'points' is N*3 array
+        distances = np.zeros([points.shape[0],points.shape[0]],dtype=np.float)
+        cdist(points, points,out=distances)  # Assuming 'points' is N*3 array
         # get thresholds
         sensor_centers = np.array([0,0,0])
         ru = np.linalg.norm(points - sensor_centers, axis=1)
@@ -586,7 +603,19 @@ class LESS():
         points_with_rgb = np.concatenate((points,rgb_matrix),axis=1)
 
         return points_with_rgb
-
+    
+    def read_specific_line_from_file(self,file, line_number):
+        try:
+            current_line_number = 0
+            for line in file:
+                current_line_number += 1
+                if current_line_number == line_number:
+                    return line
+            # If the line number is out of range, return an error message
+            return f"Line {line_number} not found in the file."
+        except Exception as e:
+            return f"An error occurred: {str(e)}"
+        
 if __name__ == '__main__':
     # config_path = 'config/LESS_dist3.yaml'
     config_path = 'config/LESS.yaml'
@@ -599,7 +628,7 @@ if __name__ == '__main__':
     with open(dataset_config_path, 'r') as f:
         config['val_dataset'].update(yaml.safe_load(f))
     parser = argparse.ArgumentParser()
-    parser.add_argument('--solve_seq', default=5,help='-1 means all,0-10 should be input')
+    parser.add_argument('--solve_seq', default=0,help='-1 means all,0-10 should be input')
     args = parser.parse_args()
     less = LESS(config['dataset'],config['LESS'],args=args)
     less.run_LESS()

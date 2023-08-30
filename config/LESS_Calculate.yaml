@@ -58,6 +58,11 @@ logger:
 # we treat a point as ground point, when its distance to the fitting flat <  dist 
 # the cluster_d is the d in the paper, which is in the formula:
 #                 τ (u, v) = max(ru, rv) × d
+
+# varible which restores this label is nothing, weak, propogated or scribble
+# tips: nothing and ground(which is not reduce by last step) will not be used in 
+# noting, scribbles, propogated, weak
+#   0         1          2         3 
 LESS:
   RANSAC:
     scans_per_subsequence: 5    
@@ -69,7 +74,7 @@ LESS:
     z_sort_bar: 0.1   # 规定分位数以下点才可以被选择
   cluster:
     d: 0.01
-  target_directory: 'LESS_230810_add_z_sort'
+  target_directory: 'LESS_230716'
   save: False
   save_file_number: 0
   start_number_in_one_seq: 3785   # 0 means continue from existing files

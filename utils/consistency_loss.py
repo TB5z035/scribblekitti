@@ -9,11 +9,17 @@ class PartialConsistencyLoss(nn.Module):
         self.supervised_loss = H(ignore_index=ignore_index, reduction='sum')
         self.consistency_loss = nn.KLDivLoss(reduction='sum')
 
-    def forward(self, student_output, teacher_output, student_label):
+    def forward(self, student_output, teacher_output, student_label,label_group):
         loss_s = self.compute_supervised_loss(student_output, student_label)
-        mask = student_label == self.ignore_index
+        if label_group != None:
+            mask = label_group == 0
+        else:
+            # mask = student_label == self.ignore_index
+            mask = student_label == 0
+        # mask = student_label == self.ignore_index
         loss_u = self.compute_consistency_loss(student_output, teacher_output, mask=mask)
-        return (loss_s + loss_u)/student_output.shape[0]
+        # return loss_s/student_label[student_label!=0].shape[0] + (loss_u)/student_output.shape[0]
+        return  (loss_s + loss_u)/student_output.shape[0]
 
     def compute_supervised_loss(self, student_output, student_label):
         return self.supervised_loss(student_output, student_label)

@@ -15,7 +15,11 @@ class LESS():
         self.split = split
         self.label_directory = label_directory
         self.true_directory = 'labels'
+        self.fusion_target_directory = config_LESS['fusion_target_directory']
         self.target_directory = config_LESS['target_directory']
+        self.target_directory_2 = config_LESS['target_directory_2']
+        self.target_directory_3 = config_LESS['target_directory_3']
+        self.target_directory_4 = config_LESS['target_directory_4']
         self.t = config_LESS['RANSAC']['scans_per_subsequence']
         self.l_grid = config_LESS['RANSAC']['l_grid']
         self.dist = config_LESS['RANSAC']['dist']
@@ -58,19 +62,20 @@ class LESS():
         root_dir = self.config['root_dir']
         cnt_seq = 0
         Calculate_Result_all = np.zeros([19,5],dtype=np.int64)      # row represents class_name, column is [Weak_Wrong, Propogated_Wrong, Weak_Num, Propogated_Num, All_Point]
-        self.save_dir = './' +'LESS_Calculate/' + self.target_directory
-        os.makedirs(self.save_dir)
+        self.save_dir = './' +'LESS_Calculate/' + self.fusion_target_directory
+        if not os.path.exists(self.save_dir):
+            os.makedirs(self.save_dir)
         for seq in self.config['split'][self.split]:
             if self.seq_to_process >= 0:
                 if seq != self.seq_to_process:
                     continue
             seq = '{0:02d}'.format(int(seq))
-            label_class_dir = os.path.join(root_dir, seq,self.target_directory, 'group')
-            labels_dir = os.path.join(root_dir, seq,self.target_directory, 'labels')
-            if not os.path.exists(label_class_dir):
-                    os.makedirs(label_class_dir)
-            if not os.path.exists(labels_dir):
-                    os.makedirs(labels_dir)   
+            self.label_class_dir = os.path.join(root_dir, seq,self.fusion_target_directory, 'group')
+            self.labels_dir = os.path.join(root_dir, seq,self.fusion_target_directory, 'labels')
+            if not os.path.exists(self.label_class_dir):
+                    os.makedirs(self.label_class_dir)
+            if not os.path.exists(self.labels_dir):
+                    os.makedirs(self.labels_dir)   
             
             Calculate_Result = np.zeros([19,5],dtype=np.int64)      # row represents class_name, column is [Weak_Wrong, Propogated_Wrong, Weak_Num, Propogated_Num, All_Point]
 
@@ -90,8 +95,32 @@ class LESS():
             # assert (len(lidar_paths) == len(LESS_labels_paths))
             label_group_dir = os.path.join(root_dir, seq, self.target_directory,'group')
             label_group_paths = [os.path.join(dp, f) for dp, dn, fn in os.walk(os.path.expanduser(label_group_dir)) for f in fn if f.endswith('.label')]
+
+            LESS_label_dir_2 = os.path.join(root_dir, seq, self.target_directory_2,'labels')
+            LESS_labels_path_2 = [os.path.join(dp, f) for dp, dn, fn in os.walk(os.path.expanduser(LESS_label_dir_2)) for f in fn if f.endswith('.label')]
+            # assert (len(lidar_paths) == len(LESS_labels_paths))
+            label_group_dir_2 = os.path.join(root_dir, seq, self.target_directory_2,'group')
+            label_group_paths_2 = [os.path.join(dp, f) for dp, dn, fn in os.walk(os.path.expanduser(label_group_dir_2)) for f in fn if f.endswith('.label')]
+
+            LESS_label_dir_3 = os.path.join(root_dir, seq, self.target_directory_3,'labels')
+            LESS_labels_path_3 = [os.path.join(dp, f) for dp, dn, fn in os.walk(os.path.expanduser(LESS_label_dir_3)) for f in fn if f.endswith('.label')]
+            # assert (len(lidar_paths) == len(LESS_labels_paths))
+            label_group_dir_3 = os.path.join(root_dir, seq, self.target_directory_3,'group')
+            label_group_paths_3 = [os.path.join(dp, f) for dp, dn, fn in os.walk(os.path.expanduser(label_group_dir_3)) for f in fn if f.endswith('.label')]
+
+            LESS_label_dir_4 = os.path.join(root_dir, seq, self.target_directory_4,'labels')
+            LESS_labels_path_4 = [os.path.join(dp, f) for dp, dn, fn in os.walk(os.path.expanduser(LESS_label_dir_4)) for f in fn if f.endswith('.label')]
+            # assert (len(lidar_paths) == len(LESS_labels_paths))
+            label_group_dir_4 = os.path.join(root_dir, seq, self.target_directory_4,'group')
+            label_group_paths_4 = [os.path.join(dp, f) for dp, dn, fn in os.walk(os.path.expanduser(label_group_dir_4)) for f in fn if f.endswith('.label')]
+
             pose_path = os.path.join(root_dir,seq,'poses.txt')
-            self.fusion(lidar_path=lidar_path,pose_path=pose_path,label_path=label_path,t=self.t,l_grid=self.l_grid,dist=self.dist,iter_max=self.iter_max,percent=self.percent,d=self.d,seq=seq,true_label_path=true_label_path,LESS_labels_path=LESS_labels_path,label_group_paths=label_group_paths,Calculate_Result=Calculate_Result,Calculate_Result_all=Calculate_Result_all)
+            self.fusion(lidar_path=lidar_path,pose_path=pose_path,label_path=label_path,t=self.t,l_grid=self.l_grid,dist=self.dist,iter_max=self.iter_max,percent=self.percent,
+                        d=self.d,seq=seq,true_label_path=true_label_path,LESS_labels_path=LESS_labels_path,label_group_paths=label_group_paths,Calculate_Result=Calculate_Result,Calculate_Result_all=Calculate_Result_all,
+                        LESS_labels_path_2=LESS_labels_path_2,label_group_paths_2=label_group_paths_2,
+                        LESS_labels_path_3=LESS_labels_path_3,label_group_paths_3=label_group_paths_3,
+                        LESS_labels_path_4=LESS_labels_path_4,label_group_paths_4=label_group_paths_4
+                        )
         Result_list = []
         for i in range(1,20):
             class_name = self.class_name_map[i]
@@ -103,45 +132,31 @@ class LESS():
         columns = ["Class Name", "Weak_Wrong", "Propogated_Wrong", "Weak_Num", "Propogated_Num", "Points_Num",'Weak_Wrong_Percent','Propogated_Wrong_Percent']
         df = pd.DataFrame(Result_list, columns=columns)
         df_sorted = df.sort_values(by="Points_Num", ascending=False)
-        excel_filename = self.save_dir + '/' + self.target_directory +'_' + "all "+seq+".xlsx"
+        excel_filename = self.save_dir + '/' + self.fusion_target_directory +'_' + "all "+".xlsx"
         df_sorted.to_excel(excel_filename, index=False)
-        self.Preconfig_Excel(excel_filename=excel_filename,df=df_sorted)
+        # self.Preconfig_Excel(excel_filename=excel_filename,df=df_sorted)
         return 1
     
-    def Preconfig_Excel(self,excel_filename,df):
-        wb = load_workbook(excel_filename)
-        ws = wb.active
-        # Center align all cells
-        for row in ws.iter_rows(min_row=1, min_col=1, max_row=ws.max_row, max_col=ws.max_column):
-            for cell in row:
-                cell.alignment = Alignment(horizontal="center")
-
-        # Format "Weak_Num" and "Propogated_Num" columns as percentages
-        for col_letter in ["Weak_Wrong_Percent", "Propogated_Wrong_Percent"]:
-            for row in ws.iter_rows(min_row=2, min_col=df.columns.get_loc(col_letter) + 1, max_row=ws.max_row, max_col=df.columns.get_loc(col_letter) + 1):
-                for cell in row:
-                    cell.number_format = numbers.FORMAT_PERCENTAGE_00
-
-        # Adjust column widths based on content
-        for column in df.columns:
-            column_idx = df.columns.get_loc(column) + 1
-            max_length = max(df[column].astype(str).apply(len).max(), len(column))
-            adjusted_width = (max_length + 2) * 1.2  # Adding a little extra space
-            ws.column_dimensions[get_column_letter(column_idx)].width = adjusted_width
-        wb.save(excel_filename)
 
 
 
     # t represent t scans to be combined with
     # l_grid means we use l*l grid to run RANSAC
-    def fusion(self,lidar_path,pose_path,label_path,t,l_grid,dist,iter_max,percent,d,seq,true_label_path,LESS_labels_path,label_group_paths,Calculate_Result,Calculate_Result_all):     
+    def fusion(self,lidar_path,pose_path,label_path,t,l_grid,dist,iter_max,percent,d,seq,true_label_path,LESS_labels_path,label_group_paths,Calculate_Result,Calculate_Result_all,LESS_labels_path_2,LESS_labels_path_3,label_group_paths_2,label_group_paths_3,LESS_labels_path_4,label_group_paths_4):     
         lidar_path.sort()
         label_path.sort()
         true_label_path.sort()
         LESS_labels_path.sort()
         label_group_paths.sort()
+        LESS_labels_path_2.sort()
+        label_group_paths_2.sort()
+        LESS_labels_path_3.sort()
+        label_group_paths_3.sort()
+        LESS_labels_path_4.sort()
+        label_group_paths_4.sort()
         cnt = 0
-        for lidar_file,label_file,true_label_file,LESS_label_file,label_group_file in zip(lidar_path,label_path,true_label_path,LESS_labels_path,label_group_paths):
+        # for lidar_file,label_file,true_label_file,LESS_label_file,label_group_file,LESS_label_file_2,label_group_file_2,LESS_label_file_3,label_group_file_3,LESS_label_file_4,label_group_file_4 in zip(lidar_path,label_path,true_label_path,LESS_labels_path,label_group_paths,LESS_labels_path_2,label_group_paths_2,LESS_labels_path_3,label_group_paths_3,LESS_labels_path_4,label_group_paths_4):
+        for lidar_file,label_file,true_label_file,LESS_label_file,label_group_file,LESS_label_file_3,label_group_file_3,LESS_label_file_4,label_group_file_4 in zip(lidar_path,label_path,true_label_path,LESS_labels_path,label_group_paths,LESS_labels_path_3,label_group_paths_3,LESS_labels_path_4,label_group_paths_4):
             # start a new subsequence 
             lidar_xyz_unified = np.array([[0,0,0]],dtype=np.float32)
             label_unified = np.array([[0]])
@@ -166,9 +181,57 @@ class LESS():
             LESS_label = np.fromfile(LESS_label_file, dtype=bool)
             LESS_label = LESS_label.reshape((-1, 20))
             label_group = np.fromfile(label_group_file,dtype=np.int8)
+
+            # LESS_label_2 = np.fromfile(LESS_label_file_2, dtype=bool)
+            # LESS_label_2 = LESS_label_2.reshape((-1, 20))
+            # label_group_2 = np.fromfile(label_group_file_2,dtype=np.int8)
+
+            LESS_label_3 = np.fromfile(LESS_label_file_3, dtype=bool)
+            LESS_label_3 = LESS_label_3.reshape((-1, 20))
+            label_group_3 = np.fromfile(label_group_file_3,dtype=np.int8)
+
+
+            LESS_label_4 = np.fromfile(LESS_label_file_4, dtype=bool)
+            LESS_label_4 = LESS_label_4.reshape((-1, 20))
+            label_group_4 = np.fromfile(label_group_file_4,dtype=np.int8)
             # lidar_x = lidar_x*r11 +r12*lidar_y+r13*lidar_z + t14
             # lidar_y = lidar_x*r21 +r22*lidar_y+r23*lidar_z + t24
             # lidar_z = lidar_x*r31 +r32*lidar_y+r33*lidar_z + t34
+
+            # label_group_2_selected = label_group_2[nothing_index]         # select the noting group in main LESS result index in LESS result 2
+            # label_group_3_selected = label_group_3[nothing_index]         # select the noting group in main LESS result index in LESS result 3
+
+            # LESS_label[nothing_index] += LESS_label_2[nothing_index] + LESS_label_3[nothing_index]
+            # label_group[nothing_index] = 3
+            file_name = LESS_label_file.split('/labels/')[1]
+            label_class_file = os.path.join(self.label_class_dir,file_name)
+            labels_file = os.path.join(self.labels_dir,file_name)
+            # if seq == '06':
+            #     if cnt == 396:
+            #         a = 1
+            # if seq != '06':
+            #     nothing_index = np.where(label_group == 0)[0]
+            #     nothing_index_in_origin_point_while_propogated_in_another = nothing_index[np.where(label_group_2[nothing_index]==2)]
+            #     label_group[nothing_index_in_origin_point_while_propogated_in_another] = 2
+            #     LESS_label[nothing_index_in_origin_point_while_propogated_in_another] = LESS_label_2[nothing_index_in_origin_point_while_propogated_in_another]
+
+            nothing_index = np.where(label_group == 0)[0]
+            nothing_index_in_origin_point_while_propogated_in_another = nothing_index[np.where(label_group_3[nothing_index]==2)]
+            label_group[nothing_index_in_origin_point_while_propogated_in_another] = 2
+            LESS_label[nothing_index_in_origin_point_while_propogated_in_another] = LESS_label_3[nothing_index_in_origin_point_while_propogated_in_another]
+
+            nothing_index = np.where(label_group == 0)[0]
+            nothing_index_in_origin_point_while_propogated_in_another = nothing_index[np.where(label_group_4[nothing_index]==2)]
+            label_group[nothing_index_in_origin_point_while_propogated_in_another] = 2
+            LESS_label[nothing_index_in_origin_point_while_propogated_in_another] = LESS_label_4[nothing_index_in_origin_point_while_propogated_in_another]
+
+
+            label_group.tofile(label_class_file)
+            LESS_label.tofile(labels_file)
+
+            # label_group_2[nothing_index][label_group_2[nothing_index] !=0].shape
+            # label_group_3[nothing_index][label_group_3[nothing_index] !=0].shape
+
 
             lidar_x = np.expand_dims(lidar_x,axis=1)
             lidar_y = np.expand_dims(lidar_y,axis=1)
@@ -224,14 +287,14 @@ class LESS():
         columns = ["Class Name", "Weak_Wrong", "Propogated_Wrong", "Weak_Num", "Propogated_Num", "Points_Num",'Weak_Wrong_Percent','Propogated_Wrong_Percent']
         df = pd.DataFrame(Result_list, columns=columns)
         df_sorted = df.sort_values(by="Points_Num", ascending=False)
-        excel_filename = self.save_dir +'/'+self.target_directory +'_' + "seq "+seq+".xlsx"
+        excel_filename = self.save_dir +'/'+ self.fusion_target_directory +'_' + "seq "+seq+".xlsx"
         df_sorted.to_excel(excel_filename, index=False)
-        self.Preconfig_Excel(excel_filename=excel_filename,df=df_sorted)
+        # self.Preconfig_Excel(excel_filename=excel_filename,df=df_sorted)
 
 
 if __name__ == '__main__':
     # config_path = 'config/LESS_dist3.yaml'
-    config_path = 'config/LESS_Calculate.yaml'
+    config_path = 'config/LESS_fusion.yaml'
     dataset_config_path = 'config/dataset/semantickitti.yaml'
 
     with open(config_path, 'r') as f:
@@ -241,7 +304,7 @@ if __name__ == '__main__':
     with open(dataset_config_path, 'r') as f:
         config['val_dataset'].update(yaml.safe_load(f))
     parser = argparse.ArgumentParser()
-    parser.add_argument('--solve_seq', default=-1,help='-1 means all,0-10 should be input')
+    parser.add_argument('--solve_seq', default=6,help='-1 means all,0-10 should be input')
     args = parser.parse_args()
     less = LESS(config['dataset'],config['LESS'],args=args)
     less.run_LESS()

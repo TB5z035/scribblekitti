@@ -54,7 +54,7 @@ class LightningTrainer(pl.LightningModule):
 
         self.loss_ls = lovasz_softmax
         self.loss_cl = PartialConsistencyLoss(H=nn.CrossEntropyLoss, ignore_index=0)
-        self.less_loss = LESS_Loss(H=nn.CrossEntropyLoss,alpha=self.config['Weighted_focal_loss']['alpha'],gamma=self.config['Weighted_focal_loss']['gamma'],ignore_index=0,ignore_propogated_index=self.config['Propogated_Ignore_Index'])
+        self.less_loss = LESS_Loss(H=nn.CrossEntropyLoss,alpha=self.config['Weighted_focal_loss']['alpha'],drop_percent=self.config['drop_percent'],gamma=self.config['Weighted_focal_loss']['gamma'],ignore_index=0,ignore_propogated_index=self.config['Propogated_Ignore_Index'],Weighted_Focal_Loss_set=False)
         self.teacher_cm = ConfusionMatrix(self.nclasses)
         self.student_cm = ConfusionMatrix(self.nclasses)
         self.best_miou = 0
@@ -82,15 +82,24 @@ class LightningTrainer(pl.LightningModule):
 
         student_output = self(self.student, student_fea, student_rpz, batch_size)       # 输出[batch融合点数,20]的tensor
         teacher_output = self(self.teacher, teacher_fea, teacher_rpz, batch_size)
-        cl_loss = self.loss_cl(student_output, teacher_output, student_label)
+        cl_loss = self.loss_cl(student_output, teacher_output, student_label,label_group)
         ls_loss = self.loss_ls(student_output.softmax(1), student_label, ignore=0)
         
         # loss_weak,loss_propogated = self.less_loss(student_output.softmax(1),student_label,LESS_labels,label_group)
-        loss_weak,loss_propogated,loss_ls_propoageted = self.less_loss(student_output,student_label,LESS_labels,label_group)
+        loss_weak,loss_propogated,loss_ls_propoageted, loss_weak_entropy = self.less_loss(student_output,student_label,LESS_labels,label_group)
+
         # loss =  4.0/6.5 * cl_loss + 4.0 / 6.5 * ls_loss + 4.0*0.5/6.5 * loss_weak + 4.0 * 2.0/6.5 * loss_propogated
         # loss =  cl_loss + ls_loss + loss_propogated + 0.25 * loss_weak
         # loss = loss.sum()
-        loss = cl_loss + ls_loss + loss_propogated + 0.5 * loss_weak + loss_ls_propoageted
+        # loss = cl_loss + ls_loss + loss_propogated + 0.5 * loss_weak + loss_ls_propoageted
+        # loss = cl_loss + (ls_loss + loss_ls_propoageted)/2 + loss_propogated + 0.5 * loss_weak        # =>60.7
+        # loss = cl_loss + (ls_loss + loss_ls_propoageted)/2 + loss_propogated + 0.5 * loss_weak + 0.25 * loss_weak_entropy
+        # loss = cl_loss + (ls_loss + loss_ls_propoageted)/2 + loss_propogated + loss_weak + loss_weak_entropy
+        # loss = cl_loss + (ls_loss + loss_ls_propoageted)/2 + loss_propogated + 0.5 * loss_weak + 0.25 * loss_weak_entropy
+        loss = cl_loss + (ls_loss + loss_ls_propoageted)/2 + loss_propogated + 0.5 * loss_weak + 0.5 * loss_weak_entropy
+
+        # loss = cl_loss + ls_loss + loss_propogated + 0.5 * loss_weak      # => 60.4
+        # loss = cl_loss + ls_loss + loss_propogated + 0.5 * loss_weak + 0.25 * loss_weak_entropy       # => 61.4
         # loss = cl_loss + 2 * ls_loss + 2 * loss_propogated 
 
         # sch = self.lr_schedulers()
@@ -101,6 +110,7 @@ class LightningTrainer(pl.LightningModule):
         self.log('ls_propoageted',loss_ls_propoageted,on_epoch=True, prog_bar=True)
         self.log('weak_loss',loss_weak,on_epoch=True, prog_bar=True)
         self.log('propogated_loss',loss_propogated,on_epoch=True, prog_bar=True)
+        self.log('loss_weak_entropy',loss_weak_entropy,on_epoch=True, prog_bar=True)
         self.log('train_loss', loss, on_epoch=True, prog_bar=True)
 
         # print('cl_loss',cl_loss,'ls_loss',ls_loss,'weak_loss',loss_weak,flush=True)
@@ -118,7 +128,7 @@ class LightningTrainer(pl.LightningModule):
         student_output = self(self.student, student_fea, student_rpz, batch_size)
         teacher_output = self(self.teacher, teacher_fea, teacher_rpz, batch_size)
 
-        loss = self.loss_cl(student_output, teacher_output, student_label) + \
+        loss = self.loss_cl(student_output, teacher_output, student_label,label_group=None) + \
                self.loss_ls(student_output.softmax(1), student_label, ignore=0)
         # loss = loss.sum()
 
@@ -170,13 +180,13 @@ class LightningTrainer(pl.LightningModule):
     # here!
 
     def initialize_teacher(self) -> None:
-        self.alpha = 0.99 # TODO: Move to config
+        self.alpha = self.config['Mean_Teacher']['alpha'] # TODO: Move to config
         for p in self.teacher.parameters(): p.detach_()
 
     def update_teacher(self) -> None:
         alpha = min(1 - 1 / (self.global_step + 1), self.alpha)
         for tp, sp in zip(self.teacher.parameters(), self.student.parameters()):
-            tp.data.mul_(alpha).add_(1 - alpha, sp.data)
+            tp.data.mul_(alpha).add_(sp.data,alpha=1 - alpha)
 
     def _load_dataset_info(self) -> None:
         dataset_config = self.config['dataset']

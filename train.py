@@ -66,7 +66,13 @@ class LightningTrainer(pl.LightningModule):
         student_label = torch.cat(student_label, dim=0)
 
         student_output = self(self.student, student_fea, student_rpz, batch_size)
-
+        # a = student_output.softmax(1)
+        # a_ = torch.where(a>=0.5)
+        # mask = torch.ones(a.shape, dtype=torch.bool)
+        # mask[a_[0]] = False
+        # remaining_values = a[mask]  # Shape: (2000,)
+        # remaining_values = remaining_values.reshape(-1,20)
+        # remaining_values.max(1)
         loss = self.loss_ls(student_output.softmax(1), student_label, ignore=0)
 
         self.log('val_loss', loss, on_epoch=True, prog_bar=True)

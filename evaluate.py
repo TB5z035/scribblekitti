@@ -28,7 +28,7 @@ if __name__=='__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--config_path', default='config/test.yaml')
     parser.add_argument('--dataset_config_path', default='config/dataset/semantickitti.yaml')
-    parser.add_argument('--ckpt_path', default='/home/yujc/scribble/scribblekitti/output/scribblekitti_LESS/cylinder3d_mt_LESS/20230807-10:55:30/ckpt/epoch=13-val_teacher_miou=57.57.ckpt')
+    parser.add_argument('--ckpt_path', default='/home/yujc/scribble/scribblekitti/output/scribblekitti_LESS/cylinder3d_mt_LESS_PLS/20230821-22:00:47/ckpt/epoch=4-val_best_miou=84.66.ckpt')
     args = parser.parse_args()
 
     config =  yaml.safe_load(open(args.config_path, 'r'))

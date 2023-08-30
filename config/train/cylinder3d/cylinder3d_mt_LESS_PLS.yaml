@@ -1,10 +1,10 @@
 model:
-  in_feat: 9
+  in_feat: 66
   hid_feat: 32
 
 dataset:
   root_dir: '/data22/tb5zhh/datasets/SemanticKITTI/sequences'
-  prefix: cylindrical_less
+  prefix: cylindrical_less_pls
   label_directory: scribbles
   spatial_shape: [480,360,32]
   max_bound: [50,3.1415926,2]
@@ -14,11 +14,12 @@ dataset:
     teacher: ['rotate', 'flip']
   bin_size: [[24,9],[48,18],[96,36]]
   # LESS_target_diretory: 'LESS_230804_weak_ground_fixed'
-  # LESS_target_diretory: 'LESS_230827_fusion_attempt_propogated'
   LESS_target_diretory: 'LESS_230810_add_z_sort'
+
+
 val_dataset:
   root_dir: '/data22/tb5zhh/datasets/SemanticKITTI/sequences'
-  prefix: cylindrical_mt
+  prefix: pls_cylindrical_mt
   label_directory: labels
   spatial_shape: [480,360,32] 
   max_bound: [50,3.1415926,2]
@@ -72,7 +73,7 @@ test_dataloader:
 
 trainer:
   max_epochs: 75
-  # gpus: [2]
+  # gpus: [4]
   gpus: -1
   check_val_every_n_epoch: 1
   default_root_dir: 'output'
@@ -93,7 +94,7 @@ Weighted_focal_loss:
 # Propogated_Ignore_Index: [9, 11, 15, 17, 18, 19]  # 804
 # Propogated_Ignore_Index: [10, 17, 19]  # 810
 Propogated_Ignore_Index: []  # 810
-drop_percent: 0   # the percent of random drop points which don't calculate loss.
+
 
 optimizer:
   lr: 0.001

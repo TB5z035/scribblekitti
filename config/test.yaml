@@ -1,10 +1,10 @@
 model:
-  in_feat: 9
+  in_feat: 66
   hid_feat: 32
 
 dataset:
   root_dir: '/data22/tb5zhh/datasets/SemanticKITTI/sequences'
-  prefix: 'cylindrical'
+  prefix: 'pls_cylindrical'
   spatial_shape: [480,360,32]
   max_bound: [50,3.1415926,2]
   min_bound: [0,-3.1415926,-4]
@@ -13,7 +13,7 @@ dataset:
 
 val_dataset:
   root_dir: '/data22/tb5zhh/datasets/SemanticKITTI/sequences'
-  prefix: cylindrical
+  prefix: 'pls_cylindrical'
   spatial_shape: [480,360,32]
   max_bound: [50,3.1415926,2]
   min_bound: [0,-3.1415926,-4]
@@ -32,7 +32,7 @@ val_dataloader:
 
 trainer:
   max_epochs: 75
-  gpus: [0,2,3,7]
+  gpus: [4]
   check_val_every_n_epoch: 1
   default_root_dir: 'output'
   accelerator: 'ddp'
