@@ -8,11 +8,11 @@ pip install torch-scatter -f https://data.pyg.org/whl/torch-1.10.1+cu113.html
 pip install -r requirements.txt
 
 # Download spconv v1.2.1 with two bugs fixed
+sudo apt-get install libboost-all-dev
 wget https://cloud.tsinghua.edu.cn/f/f1a0860337224c7f8585/?dl=1 -O spconv.tar.gz && tar xzvf spconv.tar.gz
 cd spconv
-sudo apt-get install libboost-all-dev
 CUDACXX=/usr/local/cuda/bin/nvcc python setup.py bdist_wheel
-pip install dist/spconv-1.2.1-cp38-cp38-linux_x86_64.whl
+pip install --force-reinstall dist/spconv-1.2.1-cp38-cp38-linux_x86_64.whl
 
 # install SUField
 cd SUField/

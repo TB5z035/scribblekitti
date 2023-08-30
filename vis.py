@@ -60,12 +60,21 @@ color_map_label = {
   19: [0, 0, 255]
 }
 
-# sample = dataset[0]
-
+color_map_seg = {
+  0: [0,0,0],
+  1: [255, 255, 255]
+}
 def vis_label(xyzr, label, path='tmp/test.txt'):
     with open(path, 'w') as f:
         for (x, y, z, _), l in zip(xyzr, label):
             r, g, b = color_map_label[l.item()]
+            # f.write(f"{x.item()} {y.item()} {z.item()} {r} {g} {b}")
+            print(f"{x.item()} {y.item()} {z.item()} {r} {g} {b}", file=f)
+            
+def vis_seg(xyzrs, path='tmp/test.txt'):
+    with open(path, 'w') as f:
+        for x, y, z, _, s in xyzrs:
+            r, g, b = color_map_seg[s.item()]
             # f.write(f"{x.item()} {y.item()} {z.item()} {r} {g} {b}")
             print(f"{x.item()} {y.item()} {z.item()} {r} {g} {b}", file=f)
 

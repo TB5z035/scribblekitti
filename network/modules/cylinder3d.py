@@ -10,18 +10,18 @@ class ResContextBlock(nn.Module):
         super(ResContextBlock, self).__init__()
         self.conv1 = conv1x3(in_filters, out_filters, indice_key=indice_key + "bef")
         self.bn0 = nn.BatchNorm1d(out_filters)
-        self.act1 = nn.LeakyReLU()
+        self.act1 = nn.LeakyReLU(inplace=True)
 
         self.conv1_2 = conv3x1(out_filters, out_filters, indice_key=indice_key + "bef")
         self.bn0_2 = nn.BatchNorm1d(out_filters)
-        self.act1_2 = nn.LeakyReLU()
+        self.act1_2 = nn.LeakyReLU(inplace=True)
 
         self.conv2 = conv3x1(in_filters, out_filters, indice_key=indice_key + "bef")
-        self.act2 = nn.LeakyReLU()
+        self.act2 = nn.LeakyReLU(inplace=True)
         self.bn1 = nn.BatchNorm1d(out_filters)
 
         self.conv3 = conv1x3(out_filters, out_filters, indice_key=indice_key + "bef")
-        self.act3 = nn.LeakyReLU()
+        self.act3 = nn.LeakyReLU(inplace=True)
         self.bn2 = nn.BatchNorm1d(out_filters)
 
         self.weight_initialization()
@@ -61,19 +61,19 @@ class ResBlock(nn.Module):
         self.drop_out = drop_out
 
         self.conv1 = conv3x1(in_filters, out_filters, indice_key=indice_key + "bef")
-        self.act1 = nn.LeakyReLU()
+        self.act1 = nn.LeakyReLU(inplace=True)
         self.bn0 = nn.BatchNorm1d(out_filters)
 
         self.conv1_2 = conv1x3(out_filters, out_filters, indice_key=indice_key + "bef")
-        self.act1_2 = nn.LeakyReLU()
+        self.act1_2 = nn.LeakyReLU(inplace=True)
         self.bn0_2 = nn.BatchNorm1d(out_filters)
 
         self.conv2 = conv1x3(in_filters, out_filters, indice_key=indice_key + "bef")
-        self.act2 = nn.LeakyReLU()
+        self.act2 = nn.LeakyReLU(inplace=True)
         self.bn1 = nn.BatchNorm1d(out_filters)
 
         self.conv3 = conv3x1(out_filters, out_filters, indice_key=indice_key + "bef")
-        self.act3 = nn.LeakyReLU()
+        self.act3 = nn.LeakyReLU(inplace=True)
         self.bn2 = nn.BatchNorm1d(out_filters)
 
         if pooling:
@@ -122,19 +122,19 @@ class UpBlock(nn.Module):
         super(UpBlock, self).__init__()
         # self.drop_out = drop_out
         self.trans_dilao = conv3x3(in_filters, out_filters, indice_key=indice_key + "new_up")
-        self.trans_act = nn.LeakyReLU()
+        self.trans_act = nn.LeakyReLU(inplace=True)
         self.trans_bn = nn.BatchNorm1d(out_filters)
 
         self.conv1 = conv1x3(out_filters, out_filters, indice_key=indice_key)
-        self.act1 = nn.LeakyReLU()
+        self.act1 = nn.LeakyReLU(inplace=True)
         self.bn1 = nn.BatchNorm1d(out_filters)
 
         self.conv2 = conv3x1(out_filters, out_filters, indice_key=indice_key)
-        self.act2 = nn.LeakyReLU()
+        self.act2 = nn.LeakyReLU(inplace=True)
         self.bn2 = nn.BatchNorm1d(out_filters)
 
         self.conv3 = conv3x3(out_filters, out_filters, indice_key=indice_key)
-        self.act3 = nn.LeakyReLU()
+        self.act3 = nn.LeakyReLU(inplace=True)
         self.bn3 = nn.BatchNorm1d(out_filters)
 
         self.up_subm = spconv.SparseInverseConv3d(out_filters, out_filters, kernel_size=3, indice_key=up_key,

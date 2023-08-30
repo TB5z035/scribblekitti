@@ -9,6 +9,7 @@ import torch
 import yaml
 from dataloader.semantickitti import SemanticKITTI
 from tqdm import tqdm
+from vis import vis_label
 
 from sufield.fit import mixture_filter, BetaDistribution, GammaDistribution
 from sufield.spec_cluster import geodesic_correlation_matrix, angular_correlation_matrix, spectral_cluster

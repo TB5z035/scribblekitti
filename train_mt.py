@@ -144,7 +144,7 @@ class LightningTrainer(pl.LightningModule):
     def update_teacher(self) -> None:
         alpha = min(1 - 1 / (self.global_step + 1), self.alpha)
         for tp, sp in zip(self.teacher.parameters(), self.student.parameters()):
-            tp.data.mul_(alpha).add_(1 - alpha, sp.data)
+            tp.data.mul_(alpha).add_(sp.data, alpha=1 - alpha)
 
     def _load_dataset_info(self) -> None:
         dataset_config = self.config['dataset']
