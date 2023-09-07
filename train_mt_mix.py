@@ -203,6 +203,11 @@ class LightningMixTrainer(LightningTrainer):
                 timer.tick('student_output')
                 teacher_output = self(self.teacher, teacher_fea, teacher_rpz, batch_size)
                 timer.tick('teacher_output')
+            elif 'lasermix' in self.config and self.config['lasermix']['mix_strategy'] == 'unc_label':
+                student_output = self(self.student, student_fea, student_rpz, batch_size)
+                timer.tick('student_output')
+                teacher_output = self(self.teacher, teacher_fea, teacher_rpz, batch_size)
+                timer.tick('teacher_output')
             else:
                 raise NotImplementedError
 
@@ -220,6 +225,8 @@ class LightningMixTrainer(LightningTrainer):
                 (mix_fea, mix_rpz, mix_label) = lasermix_1((student_fea, student_rpz, student_label_ori), (teacher_fea, teacher_rpz, teacher_label_ori), self.config)
             elif 'lasermix' in self.config and self.config['lasermix']['mix_strategy'] == 'pseudo_label':
                 (mix_fea, mix_rpz, mix_label) = lasermix_1((student_fea, student_rpz, student_pseudo_label), (teacher_fea, teacher_rpz, teacher_pseudo_label), self.config)
+            elif 'lasermix' in self.config and self.config['lasermix']['mix_strategy'] == 'unc_label':
+                (mix_fea, mix_rpz, mix_label) = lasermix_1((student_fea, student_rpz, student_label_ori), (teacher_fea, teacher_rpz, teacher_label_ori), self.config)
             else:
                 raise NotImplementedError
             timer.tick('lasermix')
@@ -237,6 +244,8 @@ class LightningMixTrainer(LightningTrainer):
                 (mix_fea, mix_rpz, mix_label) = lasermix_2((student_fea, student_rpz, student_label_ori), (teacher_fea, teacher_rpz, teacher_label_ori), self.config)
             elif 'lasermix' in self.config and self.config['lasermix']['mix_strategy'] == 'pseudo_label':
                 (mix_fea, mix_rpz, mix_label) = lasermix_2((student_fea, student_rpz, student_pseudo_label), (teacher_fea, teacher_rpz, teacher_pseudo_label), self.config)
+            elif 'lasermix' in self.config and self.config['lasermix']['mix_strategy'] == 'unc_label':
+                (mix_fea, mix_rpz, mix_label) = lasermix_2((student_fea, student_rpz, student_label_ori), (teacher_fea, teacher_rpz, teacher_label_ori), self.config)
             else:
                 raise NotImplementedError
             timer.tick('lasermix')
