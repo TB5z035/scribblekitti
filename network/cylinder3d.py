@@ -51,7 +51,7 @@ class FeatureGenerator(nn.Module):
             coords.append(F.pad(coord[b], (1, 0), 'constant', value=b))
         feats = torch.cat(feat, dim=0)
         coords = torch.cat(coords, dim=0)
-        if self.pretrain == True and reverse_indices == None:
+        if self.pretrain == True and reverse_indices is None:
             feats = self.net(feats)
             feats = self.compress(feats)
             return feats, coords
@@ -60,10 +60,11 @@ class FeatureGenerator(nn.Module):
             if shuffle is None:
                 shuffle = torch.randperm(feats.shape[0], device=feat[0].device)
             if reverse_indices is not None:
-                reverse_indices = reverse_indices[shuffle]
+                if self.pretrain == False:
+                    reverse_indices = reverse_indices[shuffle]
+                    feats = feats[shuffle, :]
+                    coords = coords[shuffle, :]
                 unique_inv = reverse_indices
-                feats = feats[shuffle, :]
-                coords = coords[shuffle, :]
                 unique_coords = torch_scatter.scatter_max(coords, reverse_indices, dim=0)[0]
             else:
                 feats = feats[shuffle, :]
@@ -72,6 +73,9 @@ class FeatureGenerator(nn.Module):
             feats = self.net(feats)
             feats, indexs = torch_scatter.scatter_max(feats, unique_inv, dim=0)
             feats = self.compress(feats)
+            if torch.isnan(feats).any() or torch.isnan(unique_coords).any():
+                import IPython
+                IPython.embed()
             return feats, unique_coords.type(torch.int64)
 
 class AsymmetricUNet(nn.Module):
@@ -98,15 +102,15 @@ class AsymmetricUNet(nn.Module):
         self.upBlock3 = UpBlock(4 * hid_feat, 2 * hid_feat, indice_key="up3", up_key="down2")
 
         self.reconBlock = ReconBlock(2 * hid_feat, 2 * hid_feat, indice_key="recon")
-        self.reconBlock2 = ReconBlock(4 * hid_feat, 4 * hid_feat, indice_key="recon2")
-        self.reconBlock3 = ReconBlock(8 * hid_feat, 8 * hid_feat, indice_key="recon3")
+        # self.reconBlock2 = ReconBlock(4 * hid_feat, 4 * hid_feat, indice_key="recon2")
+        # self.reconBlock3 = ReconBlock(8 * hid_feat, 8 * hid_feat, indice_key="recon3")
 
         self.logits = spconv.SubMConv3d(4 * hid_feat, nclasses, indice_key="logit", kernel_size=3, stride=1, padding=1,
                                         bias=True)
         
         self.dropout = nn.Dropout()
-        self.dropout2 = nn.Dropout()
-        self.dropout3 = nn.Dropout()
+        # self.dropout2 = nn.Dropout()
+        # self.dropout3 = nn.Dropout()
 
     def forward(self, voxel_features, coors, batch_size):
         # import IPython
@@ -126,14 +130,14 @@ class AsymmetricUNet(nn.Module):
         up2e = self.upBlock2(up3e, down2b)
         up1e = self.upBlock3(up2e, down1b)
 
-        up3e0 = self.reconBlock3(up3e)
-        up3e0.features = torch.cat((up3e0.features, up3e.features), 1)
-        up3e0.features = self.dropout3(up3e0.features)
+        # up3e0 = self.reconBlock3(up3e)
+        # up3e0.features = torch.cat((up3e0.features, up3e.features), 1)
+        # up3e0.features = self.dropout3(up3e0.features)
         
         # add another layer of projector
-        up2e0 = self.reconBlock2(up2e)
-        up2e0.features = torch.cat((up2e0.features, up2e.features), 1)
-        up2e0.features = self.dropout2(up2e0.features)
+        # up2e0 = self.reconBlock2(up2e)
+        # up2e0.features = torch.cat((up2e0.features, up2e.features), 1)
+        # up2e0.features = self.dropout2(up2e0.features)
         
         up0e = self.reconBlock(up1e)
         up0e.features = torch.cat((up0e.features, up1e.features), 1)
@@ -144,7 +148,11 @@ class AsymmetricUNet(nn.Module):
             y = logits.dense()
         else:
             y = None
-        return y, up0e, up2e0, up3e0
+        # return y, up0e, up2e0, up3e0
+        if torch.isnan(up0e.features).any():
+            import IPython
+            IPython.embed()
+        return y, up0e, None, None
 
 
 class Cylinder3D(nn.Module):
@@ -171,10 +179,14 @@ class Cylinder3DProject(Cylinder3D):
         self.feature_size = 4 * hid_feat
         self.projector = spconv.SubMConv3d(4 * hid_feat, 4 * hid_feat, indice_key="logit", kernel_size=3, stride=1, padding=1,
                                         bias=True)
-        self.projector2 = spconv.SubMConv3d(8 * hid_feat, 8 * hid_feat, indice_key="logit2", kernel_size=3, stride=1, padding=1,
-                                        bias=True)
-        self.projector3 = spconv.SubMConv3d(16 * hid_feat, 16 * hid_feat, indice_key="logit3", kernel_size=3, stride=1, padding=1,
-                                        bias=True)
+        # self.projector2 = spconv.SubMConv3d(8 * hid_feat, 8 * hid_feat, indice_key="logit2", kernel_size=3, stride=1, padding=1,
+        #                                 bias=True)
+        # self.projector3 = spconv.SubMConv3d(16 * hid_feat, 16 * hid_feat, indice_key="logit3", kernel_size=3, stride=1, padding=1,
+        #                                 bias=True)
     def forward(self, feat, coord, batch_size, unique_invs=None, shuffle=None):
         y, hidden, hidden2, hidden3 = super().forward(feat, coord, batch_size, unique_invs, shuffle)
-        return y, self.projector(hidden).features, self.projector2(hidden2).features, self.projector3(hidden3).features
+        # if torch.isnan(self.projector(hidden).features).any():
+        #     import IPython
+        #     IPython.embed()
+        # return y, self.projector(hidden).features, self.projector2(hidden2).features, self.projector3(hidden3).features
+        return y, self.projector(hidden).features, None, None

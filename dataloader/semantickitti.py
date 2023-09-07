@@ -38,7 +38,6 @@ class Baseline(SemanticKITTI, prefix='baseline'):
     def load_file_paths(self, split='train', label_directory='labels'):
         self.lidar_paths = []
         self.label_paths = []
-        self.cluster_paths = []
         for seq in self.config['split'][split]:
             seq = '{0:02d}'.format(int(seq))
 
@@ -51,15 +50,8 @@ class Baseline(SemanticKITTI, prefix='baseline'):
             assert (len(lidar_paths) == len(label_paths))
             self.label_paths.extend(label_paths)
             
-            if split == 'train':
-                cluster_dir = os.path.join(self.root_dir, seq, 'LESS_230810_add_z_sort', 'cluster')
-                cluster_paths = [os.path.join(dp, f) for dp, dn, fn in os.walk(os.path.expanduser(cluster_dir)) for f in fn if f.endswith('.label')]
-                assert (len(cluster_paths) == len(label_paths)), f'in dir {cluster_dir}, len cluster_paths {len(cluster_paths)} doesn\'t match len label_paths {len(label_paths)}'
-                self.cluster_paths.extend(cluster_paths)
-            
         self.lidar_paths.sort()
         self.label_paths.sort()
-        self.cluster_paths.sort()
 
     def __getitem__(self, idx):
         xyzr = self.get_lidar(idx)
@@ -141,7 +133,7 @@ class Baseline(SemanticKITTI, prefix='baseline'):
             # print(f'x max {np.max(xyz[:, 0])}, min {np.min(xyz[:, 0])}')
             # print(f'y max {np.max(xyz[:, 1])}, min {np.min(xyz[:, 1])}')
             # print(f'z max {np.max(xyz[:, 2])}, min {np.min(xyz[:, 2])}')
-            noise = np.array([np.random.normal(0, 3, (xyz.shape[0])), np.random.normal(0, 3, (xyz.shape[0])), np.random.normal(0, 0.1, (xyz.shape[0]))]).T
+            noise = np.array([np.random.normal(0, 0.1, 1), np.random.normal(0, 0.1, 1), np.random.normal(0, 0.1, 1)]).T
             # noise = np.array([np.random.normal(0, 0.1, 1), np.random.normal(0, 0.1, 1), np.random.normal(0, 0.1, 1)]).T
             xyz[:, :3] += noise
         return xyz
@@ -239,11 +231,11 @@ class Cylindrical(Baseline, prefix='cylindrical'):
             xyz[:, :2] = s * xyz[:, :2]
             all_xyz[:, :2] = s * all_xyz[:, :2]
 
-        # if 'noise' in methods:
+        if 'noise' in methods:
             # TODO: add point-wise arbitrary niose, 5% to data range
-            # noise = np.array([np.random.normal(0, 0.1, 1), np.random.normal(0, 0.1, 1), np.random.normal(0, 0.1, 1)]).T
-            # xyz[:, :3] += noise
-            # all_xyz[:, :3] += noise
+            noise = np.array([np.random.normal(0, 0.1, 1), np.random.normal(0, 0.1, 1), np.random.normal(0, 0.1, 1)]).T
+            xyz[:, :3] += noise
+            all_xyz[:, :3] += noise
         return xyz, all_xyz
     
     def get_cylindrical_scene(self, xyzr, label, aug_methods):
@@ -346,48 +338,95 @@ class PLSCylindricalMT(CylindricalMT, PLSCylindrical, prefix='pls_cylindrical_mt
     pass
 
 class CylindricalCluster(Cylindrical, prefix='cylindrical_cluster'):
+    def get_cylindrical_scene(self, xyzr, aug_methods):
+        xyz, intensity = xyzr[:, :3], xyzr[:, 3]
+        
+        if self.split == 'train':
+            xyz = self.augment(xyz, aug_methods)
+
+        rpz = self.cart2cyl(xyz)
+        clipped_rpz = np.clip(rpz, self.min_bound, self.max_bound)
+        rpz_discrete = (np.floor((clipped_rpz - self.min_bound) / self.drpz)).astype(np.int64)
+        
+        center = (rpz_discrete.astype(np.float32) + 0.5) * self.drpz + self.min_bound
+        centered_rpz = rpz - center
+        fea = np.concatenate((centered_rpz, rpz, xyz[:, :2], intensity.reshape(-1, 1)), axis=1)
+        return torch.from_numpy(rpz_discrete), \
+               torch.from_numpy(fea).float()
+               
     def __getitem__(self, idx):
         xyzr = self.get_lidar(idx)
-        label = self.get_label(idx)
         cluster = self.get_cluster(idx)
         return [
-            self.get_cylindrical_scene(xyzr, label, self.config.get('aug', None)),
-            self.get_cylindrical_scene(xyzr, label, self.config.get('aug', None)),
-            cluster
-        ]
-    @staticmethod
-    def _collate_fn(batch):
-        list_branch_1, list_branch_2, cluster = zip(*batch)
-        stu_xyzrs, stu_feas, stu_labels = zip(*list_branch_1)
-        tea_xyzrs, tea_feas, tea_labels = zip(*list_branch_2)
-        return [
-            (tea_xyzrs, tea_feas, tea_labels),
-            (stu_xyzrs, stu_feas, stu_labels),
+            self.get_cylindrical_scene(xyzr, self.config.get('aug', None)),
+            self.get_cylindrical_scene(xyzr, self.config.get('aug', None)),
             cluster
         ]
         
+    def load_file_paths(self, split='train', label_directory='labels'):
+        self.lidar_paths = []
+        self.label_paths = []
+        self.cluster_paths = []
+        for seq in self.config['split'][split]:
+            seq = '{0:02d}'.format(int(seq))
+
+            lidar_dir = os.path.join(self.root_dir, seq, 'velodyne')
+            lidar_paths = [os.path.join(dp, f) for dp, dn, fn in os.walk(os.path.expanduser(lidar_dir)) for f in fn if f.endswith('.bin')]
+            self.lidar_paths.extend(lidar_paths)
+
+            label_dir = os.path.join(self.root_dir, seq, label_directory)
+            label_paths = [os.path.join(dp, f) for dp, dn, fn in os.walk(os.path.expanduser(label_dir)) for f in fn if f.endswith('.label')]
+            assert (len(lidar_paths) == len(label_paths))
+            self.label_paths.extend(label_paths)
+            
+            if split == 'train':
+                cluster_dir = os.path.join(self.root_dir, seq, 'LESS_230810_add_z_sort', 'cluster')
+                cluster_paths = [os.path.join(dp, f) for dp, dn, fn in os.walk(os.path.expanduser(cluster_dir)) for f in fn if f.endswith('.label')]
+                assert (len(cluster_paths) == len(label_paths)), f'in dir {cluster_dir}, len cluster_paths {len(cluster_paths)} doesn\'t match len label_paths {len(label_paths)}'
+                self.cluster_paths.extend(cluster_paths)
+            
+        self.lidar_paths.sort()
+        self.label_paths.sort()
+        self.cluster_paths.sort()
+        
+    @staticmethod
+    def _collate_fn(batch):
+        list_branch_1, list_branch_2, cluster = zip(*batch)
+        stu_xyzrs, stu_feas = zip(*list_branch_1)
+        tea_xyzrs, tea_feas = zip(*list_branch_2)
+        return [
+            (tea_xyzrs, tea_feas),
+            (stu_xyzrs, stu_feas),
+            cluster
+        ]
+        
+# import pointnet2_ops._ext as _ext
 
 class CylindricalTwin(Cylindrical, prefix='cylindrical_twin'):
 
     def __getitem__(self, idx):
         xyzr = self.get_lidar(idx)
-        label = self.get_label(idx)
+        # label = self.get_label(idx)
+        # pidx = _ext.furthest_point_sampling(torch.from_numpy(xyzr[:, :3]).reshape((1, xyzr.shape[0], 3)).contiguous().cuda(), 1024).reshape(1024).long()
+        # xyzr = xyzr[pidx]
+        # label = xyzr[pidx]
         return [
-            self.get_cylindrical_scene(xyzr, label, []),
-            self.get_cylindrical_scene(xyzr, label, self.config.get('aug', None))
+            self.get_cylindrical_scene(xyzr, self.config.get('aug', None)),
+            self.get_cylindrical_scene(xyzr, self.config.get('aug', None))
         ]
     @staticmethod
     def _collate_fn(batch):
-        list_branch_1, list_branch_2, cluster = zip(*batch)
-        stu_xyzrs, stu_feas, stu_labels, stu_rpzs = zip(*list_branch_1)
-        tea_xyzrs, tea_feas, tea_labels, tea_rpzs = zip(*list_branch_2)
+        list_branch_1, list_branch_2 = zip(*batch)
+        stu_xyzrs, stu_feas, stu_rpzs = zip(*list_branch_1)
+        tea_xyzrs, tea_feas, tea_rpzs = zip(*list_branch_2)
         return [
-            (tea_xyzrs, tea_feas, tea_labels, tea_rpzs),
-            (stu_xyzrs, stu_feas, stu_labels, stu_rpzs),
+            (tea_xyzrs, tea_feas, tea_rpzs),
+            (stu_xyzrs, stu_feas, stu_rpzs),
         ]
     
-    def get_cylindrical_scene(self, xyzr, label, aug_methods):
+    def get_cylindrical_scene(self, xyzr, aug_methods):
         xyz, intensity = xyzr[:, :3], xyzr[:, 3]
+        xyz_ = copy.deepcopy(xyz)
 
         if self.split == 'train':
             # rpz = self.cart2cyl(xyz)
@@ -395,17 +434,23 @@ class CylindricalTwin(Cylindrical, prefix='cylindrical_twin'):
             # rpz_discrete = (np.floor((clipped_rpz - self.min_bound) / self.drpz)).astype(np.int64)
             # # assume that after transform the points will belong to the same voxel
             # uniqued_rpz, unique_inv = np.unique(rpz_discrete, return_inverse=True, axis=0)
+            # 当时后面一个 scene 应该再 + 前面一个 scene 的 max 值
             # xyz = self.augment(xyz, aug_methods)
             if len(aug_methods) != 0:
-                all_xyz_ = copy.deepcopy(self.all_xyz)
-                xyz, all_xyz_transformed = self.double_augment(xyz, all_xyz_, aug_methods)
-                all_rpz_transformed = self.cart2cyl(all_xyz_transformed)
-                clipped_rpz_transformed = np.clip(all_rpz_transformed, self.min_bound, self.max_bound)
-                # (5529600, 3) -> unique (1712364, 3)
-                rpz_transformed_discrete = (np.floor((clipped_rpz_transformed - self.min_bound) / self.drpz)).astype(np.int64)
-            else:
-                # unique_inv = None
-                rpz_transformed_discrete = None
+                xyz = self.augment(xyz, aug_methods)
+                
+                # all_xyz_ = copy.deepcopy(self.all_xyz)
+                # xyz, all_xyz_transformed = self.double_augment(xyz, all_xyz_, aug_methods)
+                # all_rpz_transformed = self.cart2cyl(all_xyz_transformed)
+                # clipped_rpz_transformed = np.clip(all_rpz_transformed, self.min_bound, self.max_bound)
+                # # (5529600, 3) -> unique (1712364, 3)
+                # rpz_transformed_discrete = (np.floor((clipped_rpz_transformed - self.min_bound) / self.drpz)).astype(np.int64)
+                # transform_idx = rpz_transformed_discrete[:, 0] + (rpz_transformed_discrete[:, 1] + rpz_transformed_discrete[:, 2] * self.spatial_shape[1]) * self.spatial_shape[0]
+                
+                # transform_idx = []
+                # for i in rpz_transformed_discrete:
+                #     transform_idx.append(i[0] + (i[1] + i[2] * self.spatial_shape[1]) * self.spatial_shape[0])
+                # transform_idx = np.array(transform_idx)
 
         rpz = self.cart2cyl(xyz)
         clipped_rpz = np.clip(rpz, self.min_bound, self.max_bound)
@@ -417,8 +462,9 @@ class CylindricalTwin(Cylindrical, prefix='cylindrical_twin'):
         fea = np.concatenate((centered_rpz, rpz, xyz[:, :2], intensity.reshape(-1, 1)), axis=1)
         return torch.from_numpy(rpz_discrete), \
                torch.from_numpy(fea).float(), \
-               torch.from_numpy(label).squeeze().long(), \
-               torch.from_numpy(rpz_transformed_discrete) if rpz_transformed_discrete is not None else None
+               torch.from_numpy(xyz_)
+            #    transform_idx
+            #  torch.from_numpy(rpz_transformed_discrete) if rpz_transformed_discrete is not None else None
         
 class CylindricalEMP(Cylindrical, prefix='cylindrical_emp'):
 

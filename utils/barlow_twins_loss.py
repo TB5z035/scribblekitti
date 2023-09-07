@@ -50,8 +50,8 @@ class BarlowTwinsLoss(TwinsLoss):
             feature_b = self.bn3(feature_b)
 
         cross_correlation = feature_a.T @ feature_b # [d, d]
-        torch.distributed.all_reduce(cross_correlation) 
-        cross_correlation.div_(torch.distributed.get_world_size())
+        # torch.distributed.all_reduce(cross_correlation) 
+        # cross_correlation.div_(torch.distributed.get_world_size())
         
         down = (feature_a.pow(2).sum(dim=0, keepdim=True).sqrt().T) @ (feature_b.pow(2).sum(dim=0, keepdim=True).sqrt())
         cross_correlation.div_(down)

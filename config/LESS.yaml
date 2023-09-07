@@ -1,0 +1,78 @@
+model:
+  in_feat: 66
+  hid_feat: 32
+
+dataset:
+  root_dir: '/data22/tb5zhh/datasets/SemanticKITTI/sequences'
+  prefix: pls_cylindrical_mt
+  spatial_shape: [480,360,32]
+  max_bound: [50,3.1415926,2]
+  min_bound: [0,-3.1415926,-4]
+  aug:
+    student: ['rotate', 'flip', 'scale', 'noise']
+    teacher: ['rotate', 'flip']
+  bin_size: [[24,9],[48,18],[96,36]]
+
+val_dataset:
+  root_dir: '/data22/tb5zhh/datasets/SemanticKITTI/sequences'
+  prefix: pls_cylindrical_sample
+  spatial_shape: [480,360,32]
+  max_bound: [50,3.1415926,2]
+  min_bound: [0,-3.1415926,-4]
+  aug: []
+  bin_size: [[24,9],[48,18],[96,36]]
+  
+train_dataloader:
+  batch_size: 1
+  shuffle: True
+  num_workers: 4
+
+val_dataloader:
+  batch_size: 1
+  shuffle: False
+  num_workers: 4
+
+trainer:
+  max_epochs: 75
+  gpus: [0]
+  check_val_every_n_epoch: 1
+  default_root_dir: 'output'
+  accelerator: 'ddp'
+  sync_batchnorm: True
+  accumulate_grad_batches: 2
+  num_sanity_val_steps: 1
+
+optimizer:
+  lr: 0.001
+
+logger:
+  project: 'scribblekitti'
+  name: 'training'
+
+
+# scans_per_subsequence means t scans in one subsequence 
+# l_grid means divide the ground into l_grid*l_grid blocks
+# iter_max means the RANSAC stops if iter == iter_max, which is one of stop condition
+# precent is another stop condition, when the ground points >= percent * all_points
+# dist is the highest bar that a point is treated as a inner point(ground point)
+# we treat a point as ground point, when its distance to the fitting flat <  dist 
+# the cluster_d is the d in the paper, which is in the formula:
+#                 τ (u, v) = max(ru, rv) × d
+LESS:
+  RANSAC:
+    scans_per_subsequence: 1      
+    l_grid: 4
+    iter_max: 1000
+    percent: 0.8
+    dist: 0.1
+    OOM_bar: 80000   # N points => N^2 float32 in cdist
+    z_sort_bar: 0.01   # 规定分位数以下点才可以被选择
+  cluster:
+    # d: 0.006
+    d: 0.01
+  target_directory: 'LESS_230829_add_z_sort'
+  save: False
+  save_file_number: 0
+  start_number_in_one_seq: 0   # 0 means continue from existing files
+  print_detail: False
+  add_list: [9,11,15,17]

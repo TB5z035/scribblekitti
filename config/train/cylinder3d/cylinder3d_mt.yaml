@@ -40,16 +40,29 @@ test_dataloader:
   num_workers: 4
 
 trainer:
-  max_epochs: 75
-  gpus: [3,4]
+  max_epochs: 150
+  gpus: -1
   check_val_every_n_epoch: 1
   default_root_dir: "/DATA_EDS2/zhangyk2306"
   accelerator: 'ddp'
   sync_batchnorm: True
-  accumulate_grad_batches: 2
+  accumulate_grad_batches: 1
   num_sanity_val_steps: 1
 
-load_checkpoint: "/DATA_EDS2/zhangyk2306/scribblekitti_tbw/pretrain_bt/20230815-13:38:51/model/52.ckpt"
+# load_checkpoint: "/DATA_EDS2/zhangyk2306/scribblekitti_tbw/pretrain_bt/20230824-15:22:15/model/10.ckpt"  #【1】
+# load_checkpoint: '/DATA_EDS2/zhangyk2306/scribblekitti_tbw/pretrain_bt/20230824-22:38:03/model/7.ckpt' #【3】
+# load_checkpoint: '/DATA_EDS2/zhangyk2306/scribblekitti_tbw/pretrain_bt/20230824-17:10:40/model/4.ckpt' # 【2】
+# load_checkpoint: '/DATA_EDS2/zhangyk2306/scribblekitti_tbw/pretrain_bt_cluster/20230829-18:17:35/ckpt/epoch-epoch=29.ckpt' # 10.0.0.1 [finetune], cluster >= 2, no noise
+
+load_checkpoint: '/DATA_EDS2/zhangyk2306/scribblekitti_tbw/pretrain_bt_cluster/20230829-20:30:14/ckpt/epoch-epoch=13.ckpt' # 10.0.0.1 [train2_0830], cluster >= 3, no noise. use 12.ckpt for accu4 training 【*】
+# load_checkpoint: '/DATA_EDS2/zhangyk2306/scribblekitti_tbw/pretrain_bt/20230827-22:02:53/model/4.ckpt' # voxel-transform
+# load_checkpoint: '/DATA_EDS2/zhangyk2306/scribblekitti_tbw/pretrain_bt_cluster/20230830-21:24:56/model/5.ckpt' # >=3, noise, no scale
+# load_checkpoint: '/DATA_EDS2/zhangyk2306/scribblekitti_tbw/pretrain_bt_cluster/20230831-00:01:43/model/3.ckpt' # noise & scale, >=3
+# load_checkpoint: '/DATA_EDS2/zhangyk2306/scribblekitti_tbw/pretrain_bt_cluster/20230831-00:04:05/model/9.ckpt' # no noise/scale, >=3
+# load_checkpoint: '/DATA_EDS2/zhangyk2306/scribblekitti_tbw/pretrain_bt_cluster/20230830-23:48:44/model/4.ckpt' # noise, >=2
+# load_checkpoint: '/DATA_EDS2/zhangyk2306/scribblekitti_tbw/pretrain_bt_cluster/20230831-18:47:48/model/9.ckpt' # >=2, noise
+
+# load_checkpoint: '/DATA_EDS2/zhangyk2306/scribblekitti_zyk/cylinder3d_mt/20230902-10:00:01/ckpt/epoch=34-val_teacher_miou=58.46.ckpt' # continue train of 【*】
 
 optimizer:
   lr: 0.001

@@ -180,7 +180,7 @@ def init(base_dir):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--config_path', default='config/training.yaml')
+    parser.add_argument('--config_path', default='config/train/cylinder3d/cylinder3d_mt.yaml')
     parser.add_argument('--dataset_config_path', default='config/dataset/semantickitti.yaml')
     args = parser.parse_args()
 

@@ -17,6 +17,8 @@ from torch.optim import Adam
 from torch.utils.data import DataLoader
 import torch.nn.functional as F
 
+import pointnet2_ops._ext as _ext
+
 import wandb
 from dataloader.semantickitti import SemanticKITTI, Baseline
 from network.cylinder3d import Cylinder3DProject, Cylinder3D
@@ -62,19 +64,92 @@ class LightningTrainer(pl.LightningModule):
         loss_type = self.config['pretrain_loss']['type']
         self.loss = PRETRAIN_LOSS[loss_type](self.network.feature_size, **self.config['pretrain_loss'])
 
-        self.save_hyperparameters('config')
+        # self.save_hyperparameters('config')
 
     def forward(self, model, fea, pos, reverse_indices=None):
         _, features, features2, features3 = model(fea, pos, len(fea), unique_invs=reverse_indices)
         return features, features2, features3
 
-    def training_step(self, batch, batch_idx):
-        # import IPython
-        # IPython.embed()
+
+    def train_cluster_step_remove_ground(self, batch, batch_idx):
+        (rpz_a, fea_a), (rpz_b, fea_b), clusters = batch
         
+        # one thing is to try shelter the clusters and only keep those with more than \epsilon points
+        # and also, build clusters again to make them contain more points
+        
+        rpz_a_filtered = []
+        rpz_b_filtered = []
+        fea_a_filtered = []
+        fea_b_filtered = []
+        clusters_filtered = []
+        accum_cluster = -1
+        for i in range(len(clusters)):
+            mask_ground = np.where(clusters[i] > 0)
+            cluster_remove_ground = clusters[i][mask_ground]
+            fea_a_remove_ground = fea_a[i][mask_ground]
+            fea_b_remove_ground = fea_b[i][mask_ground]
+            rpz_a_remove_ground = rpz_a[i][mask_ground]
+            rpz_b_remove_ground = rpz_b[i][mask_ground]
+            uni, inv, cnts = np.unique(cluster_remove_ground, return_inverse=True, return_counts=True)
+            mask_fil = np.where(cnts[inv] >= 2)
+            fea_a_filtered.append(fea_a_remove_ground[mask_fil])
+            fea_b_filtered.append(fea_b_remove_ground[mask_fil])
+            rpz_a_filtered.append(rpz_a_remove_ground[mask_fil])
+            rpz_b_filtered.append(rpz_b_remove_ground[mask_fil])
+            inv_filtered = inv[mask_fil]
+            _, inv_f = np.unique(inv_filtered, return_inverse=True)
+            inv_f += (accum_cluster + 1)
+            accum_cluster = np.max(inv_f)
+            clusters_filtered.append(torch.from_numpy(inv_f).long())
+            
+        cluster_inv = torch.cat(clusters_filtered, axis=0)
+        
+        output_a, _, _ = self(self.network, fea_a_filtered, rpz_a_filtered, reverse_indices=cluster_inv.cuda())
+        output_b, _, _ = self(self.network, fea_b_filtered, rpz_b_filtered, reverse_indices=cluster_inv.cuda())
+        if torch.isnan(output_a).any() or torch.isnan(output_b).any():
+            import IPython
+            IPython.embed()
+        loss = self.loss(output_a, output_b)
+        if torch.isnan(loss).any():
+            import IPython
+            IPython.embed()
+        self.logger.experiment.log({"#clusters": torch.max(cluster_inv)})
+        self.logger.experiment.log({"pretrain_loss": loss.item()})
+        return {"loss": loss}
+        
+            
+        
+        # remove ground
+        fea_a_filtered = (fea_a[0][np.where(clusters[0] > 0)], fea_a[1][np.where(clusters[1] > 0)])
+        rpz_a_filtered = (rpz_a[0][np.where(clusters[0] > 0)], rpz_a[1][np.where(clusters[1] > 0)])
+        fea_b_filtered = (fea_b[0][np.where(clusters[0] > 0)], fea_b[1][np.where(clusters[1] > 0)])
+        rpz_b_filtered = (rpz_b[0][np.where(clusters[0] > 0)], rpz_b[1][np.where(clusters[1] > 0)])
+        clusters[0][:] -= 1
+        clusters[1][np.where(clusters[1] > 0)] += np.max(clusters[0])
+        
+        cluster_inv = torch.from_numpy(np.concatenate((clusters[0][np.where(clusters[0] >= 0)], clusters[1][np.where(clusters[1] >= 0)]), axis=0)).long()
+        
+        output_a, _, _ = self(self.network, fea_a_filtered, rpz_a_filtered, reverse_indices=cluster_inv.cuda())
+        output_b, _, _ = self(self.network, fea_b_filtered, rpz_b_filtered, reverse_indices=cluster_inv.cuda())
+        if torch.isnan(output_a).any() or torch.isnan(output_b).any():
+            import IPython
+            IPython.embed()
+        loss = self.loss(output_a, output_b)
+        if torch.isnan(loss).any():
+            import IPython
+            IPython.embed()
+        self.log('#clusters', torch.max(cluster_inv), prog_bar=True)
+        self.logger.experiment.log({"pretrain_loss": loss.item()})
+        return loss
+        
+    def train_cluster_step(self, batch, batch_idx):
         (rpz_a, fea_a, label_a), (rpz_b, fea_b, label_b), cluster = batch
         
+        assert cluster[0] is not None, "cluster is None"
+        
         # concat cluster, set all ground to 0 to remove them later
+        cluster[0][np.where(cluster[0] > 0)] -= 1
+        cluster[1][np.where(cluster[1] > 0)] -= 1
         cluster[0][:] -= np.min(cluster[0])
         cluster[1][:] -= np.min(cluster[1])
         cluster[1][:] += (np.max(cluster[0]) + 1)
@@ -83,82 +158,101 @@ class LightningTrainer(pl.LightningModule):
         # make cluster as unique_inv tensor, mask ground and pass it to network
         output_a, _, _ = self(self.network, fea_a, rpz_a, reverse_indices=cluster_inv.cuda())
         output_b, _, _ = self(self.network, fea_b, rpz_b, reverse_indices=cluster_inv.cuda())
+        
+        if torch.isnan(output_a).any() or torch.isnan(output_b).any():
+            import IPython
+            IPython.embed()
         loss = self.loss(output_a, output_b)
+        if torch.isnan(loss).any():
+            import IPython
+            IPython.embed()
         self.log('#clusters', torch.max(cluster_inv), prog_bar=True)
-        if self.global_rank == 0:
-            self.logger.experiment.log({"pretrain_loss": loss.item()})
+        self.logger.experiment.log({"pretrain_loss": loss.item()})
         return loss
         
-        # (rpz_a, fea_a, label_a, transform), (rpz_b, fea_b, label_b, _) = batch
+    def train_fps_step(self, batch, batch_idx):
+        (rpz_a, fea_a, xyzs), (rpz_b, fea_b, _) = batch
+        fea_a_filtered = []
+        rpz_a_filtered = []
+        fea_b_filtered = []
+        rpz_b_filtered = []
+        for i in range(len(xyzs)):
+            pidx =  _ext.furthest_point_sampling(xyzs[i].reshape((1, xyzs[i].shape[0], 3)).contiguous(), 4096).reshape(4096).long()
+            fea_a_filtered.append(fea_a[i][pidx])
+            rpz_a_filtered.append(rpz_a[i][pidx])
+            fea_b_filtered.append(fea_b[i][pidx])
+            rpz_b_filtered.append(rpz_b[i][pidx])
+    
+        output_a, _, _ = self(self.network, fea_a_filtered, rpz_a_filtered)
+        output_b, _, _ = self(self.network, fea_b_filtered, rpz_b_filtered)
         
-        # coords_a = []
-        # for b in range(len(rpz_a)):
-        #     coords_a.append(F.pad(rpz_a[b], (1, 0), 'constant', value=b))
-        # feats_a = torch.cat(fea_a, dim=0)
-        # coords_a = torch.cat(coords_a, dim=0)
+        loss = self.loss(output_a, output_b)
+        self.logger.experiment.log({"pretrain_loss": loss.item()})
+        if torch.isnan(loss).any():
+            import IPython
+            IPython.embed()
+        return {"loss": loss}
+    
+    def train_transform_voxel_step(self, batch, batch_idx):
+        (rpz_a, fea_a, _, transform), (rpz_b, fea_b, _, _) = batch
         
-        # coords_b = []
-        # for b in range(len(rpz_b)):
-        #     coords_b.append(F.pad(rpz_b[b], (1, 0), 'constant', value=b))
-        # feats_b = torch.cat(fea_b, dim=0)
-        # coords_b = torch.cat(coords_b, dim=0)
+        coords_a = []
+        for b in range(len(rpz_a)):
+            coords_a.append(F.pad(rpz_a[b], (1, 0), 'constant', value=b))
+        feats_a = torch.cat(fea_a, dim=0)
+        coords_a = torch.cat(coords_a, dim=0)
         
-        # # for voxel-wise contrastive loss
-        # # (rpz_a, fea_a, label_a, _), (rpz_b, fea_b, label_b, unique_inv) = batch
-        # # unique_inv = torch.cat(unique_inv, dim=0)
-        # # output_a = self(self.network, fea_a, rpz_a, reverse_indices=unique_inv)
-        # # output_b = self(self.network, fea_b, rpz_b, reverse_indices=unique_inv)
-        # # loss = self.loss(output_a, output_b)
+        coords_b = []
+        for b in range(len(rpz_b)):
+            coords_b.append(F.pad(rpz_b[b], (1, 0), 'constant', value=b))
+        feats_b = torch.cat(fea_b, dim=0)
+        coords_b = torch.cat(coords_b, dim=0)
         
-        # unique_coords_a, unique_inv_a = torch.unique(coords_a, return_inverse=True, dim=0)
-        # unique_feats_a = torch_scatter.scatter_mean(feats_a, unique_inv_a, dim=0)
-        # unique_coords_b, unique_inv_b = torch.unique(coords_b, return_inverse=True, dim=0)
-        # unique_feats_b = torch_scatter.scatter_mean(feats_b, unique_inv_b, dim=0)
+        unique_coords_a, unique_inv_a = torch.unique(coords_a, return_inverse=True, dim=0)
+        unique_coords_a_idx = (unique_coords_a[:, 0] * 5529600 + unique_coords_a[:, 1] + (unique_coords_a[:, 2] + unique_coords_a[:, 3] * 360) * 480).cpu().numpy()
+        unique_feats_a = torch_scatter.scatter_mean(feats_a, unique_inv_a, dim=0)
         
-        # unique_coords_b_transformed = []
-        # for i in unique_coords_b:
-        #     unique_coords_b_transformed.append(F.pad(transform[i[0]][i[1] + (i[2] + i[3] * 360) * 480], (1, 0), 'constant', value=i[0]))
-        # unique_coords_b_transformed = torch.stack(unique_coords_b_transformed, dim=0)
+        transform[1][:] += 5529600
+        transform = np.concatenate(transform)
         
-        # unique_transformed_coords_b, unique_transformed_inv_b = torch.unique(unique_coords_b_transformed, return_inverse=True, dim=0)
-        # unique_transformed_feats_b = torch_scatter.scatter_mean(unique_feats_b, unique_transformed_inv_b, dim=0)
-        # a_cat_b, counts = torch.unique(torch.cat([unique_coords_a, unique_transformed_coords_b]), return_counts=True, dim=0)
-        # intersect_coords = a_cat_b[torch.where(counts.cpu().gt(1))]
+        idx = coords_b[:, 0] * 5529600 + coords_b[:, 1] + (coords_b[:, 2] + coords_b[:, 3] * 360) * 480
+        coords_b_idx_transformed = transform[idx.cpu().numpy()]
         
-        # mask_a = (unique_coords_a[:, None].cpu() == intersect_coords.cpu()).all(-1).any(-1).cuda()
-        # feats_a_filtered = unique_feats_a[mask_a]
-        # coords_a_filtered = unique_coords_a[mask_a]
+        intersect_coords = np.intersect1d(coords_b_idx_transformed, unique_coords_a_idx)
+        mask_a = np.isin(unique_coords_a_idx, intersect_coords)
+        feats_a_filtered = unique_feats_a[mask_a]
+        coords_a_filtered = unique_coords_a[mask_a]
+        coords_idx_filtered = unique_coords_a_idx[mask_a]
         
-        # # select intersect points respectively
-        # mask_b = np.where((unique_transformed_coords_b[:, None].cpu() == coords_a_filtered.cpu()).all(-1).any(-1) == True)[0]
-        # feats_b_filtered = unique_transformed_feats_b[mask_b]
-        # coords_b_filtered = unique_transformed_coords_b[mask_b] 
+        unique_transformed_coords_b, unique_transformed_inv_b = np.unique(coords_b_idx_transformed, return_inverse=True, axis=0)
+        unique_transformed_feats_b = torch_scatter.scatter_mean(feats_b, torch.from_numpy(unique_transformed_inv_b).cuda(), dim=0)
+        idx = []
+        for i in coords_idx_filtered:
+            idx.append(np.where(unique_transformed_coords_b == i)[0][0])
+        mask_b = np.array(idx)
+        feats_b_filtered = unique_transformed_feats_b[mask_b]
         
-        # assert feats_a_filtered.shape[0] == feats_b_filtered.shape[0], "filtered voxel number doesn't match"
+        assert feats_a_filtered.shape[0] == feats_b_filtered.shape[0], "filtered voxel number doesn't match"
         
-        # mask_scene0 = np.where(coords_a_filtered[:,0].cpu() == 0)[0]
-        # fea_a_scene0 = feats_a_filtered[:mask_scene0[-1]+1]
-        # coo_a_scene0 = coords_a_filtered[:mask_scene0[-1]+1, 1:]
-        # fea_b_scene0 = feats_b_filtered[:mask_scene0[-1]+1]
-        # coo_b_scene0 = coords_b_filtered[:mask_scene0[-1]+1, 1:]
+        mask_scene0 = np.where(coords_a_filtered[:,0].cpu() == 0)[0][-1] + 1
+        fea_a_scene0 = feats_a_filtered[:mask_scene0]
+        coo_a_scene0 = coords_a_filtered[:mask_scene0, 1:]
+        fea_b_scene0 = feats_b_filtered[:mask_scene0]
+        coo_b_scene0 = coords_a_filtered[:mask_scene0, 1:]
         
-        # fea_a_scene1 = feats_a_filtered[mask_scene0[-1]+1:]
-        # coo_a_scene1 = coords_a_filtered[mask_scene0[-1]+1:, 1:]
-        # fea_b_scene1 = feats_b_filtered[mask_scene0[-1]+1:]
-        # coo_b_scene1 = coords_b_filtered[mask_scene0[-1]+1:, 1:]
+        fea_a_scene1 = feats_a_filtered[mask_scene0:]
+        coo_a_scene1 = coords_a_filtered[mask_scene0:, 1:]
+        fea_b_scene1 = feats_b_filtered[mask_scene0:]
+        coo_b_scene1 = coords_a_filtered[mask_scene0:, 1:]
         
-        # output_a, out_a1, out_a2 = self(self.network, (fea_a_scene0, fea_a_scene1), (coo_a_scene0, coo_a_scene1))
-        # output_b, out_b1, out_b2 = self(self.network, (fea_b_scene0, fea_b_scene1), (coo_b_scene0, coo_b_scene1))
-        # # for deep contrastive learning
-        # loss = self.loss(output_a, output_b) + self.loss(out_a1, out_b1) + self.loss(out_a2, out_b2) * 0.2
-        # # loss = self.loss(output_a, output_b)
+        output_a, _, _ = self(self.network, (fea_a_scene0, fea_a_scene1), (coo_a_scene0, coo_a_scene1))
+        output_b, _, _ = self(self.network, (fea_b_scene0, fea_b_scene1), (coo_b_scene0, coo_b_scene1))
         
-        # # TODO: SegContrast, load data from culster and compute loss accordingly
-        
-        # self.log('# voxels', feats_a_filtered.shape[0], prog_bar=True)
-        # if self.global_rank == 0:
-        #     self.logger.experiment.log({"pretrain_loss": loss.item()})
-        # return loss
+        loss = self.loss(output_a, output_b)
+    
+    def training_step(self, batch, batch_idx):
+        # return self.train_fps_step(batch, batch_idx)
+        return self.train_cluster_step_remove_ground(batch, batch_idx)
 
     def training_epoch_end(self, outputs) -> None:
         dirpath = os.path.join(self.config['base_dir'], 'model')
@@ -166,34 +260,31 @@ class LightningTrainer(pl.LightningModule):
         torch.save(self.network.state_dict(), os.path.join(dirpath, f'{self.current_epoch}.ckpt'))
 
     def validation_step(self, batch, batch_idx):
-        # if 'load_checkpoint' in self.config:
-        # ckpt_path = self.config['load_checkpoint']
-        # state_dict = torch.load(ckpt_path, map_location='cpu')
-        # self.network.load_state_dict(state_dict, strict=False)
-        # self.network = self.network.cuda()
-        # print('loaded checkpoint from ' + ckpt_path)
-        if self.global_rank == 0:
-            rpz, fea, label = batch
-            output, _, _ = self(self.network, fea, rpz)
-            return [output.cpu(), label[0].cpu()]
-        else:
-            return None
+        # if self.global_rank == 0:
+        rpz, fea, label = batch
+        output, _, _ = self(self.network, fea, rpz)
+        return [output.cpu(), label[0].cpu()]
+        # else:
+        #     return None
 
     def validation_epoch_end(self, outputs) -> None:
-        if self.global_rank == 0:
-            feats = [item for sublist in outputs for item in sublist][0::2]
-            labels = [item for sublist in outputs for item in sublist][1::2]
-            features = torch.cat(feats, dim=0).cpu().numpy()
-            colors = torch.cat(labels, dim=0).cpu().numpy() + 1
-            print('Number of features: ', len(features))
-            feature_embedded = TSNE(n_components=2, learning_rate='auto', perplexity=3).fit_transform(features)
-            # dirpath = "rst_new"
-            dirpath = os.path.join(self.config['base_dir'], 'tsne')
-            os.makedirs(dirpath, exist_ok=True)
-            dirpath = os.path.join(dirpath, f'{self.current_epoch}.png')
-            plt.scatter(feature_embedded[:, 0], feature_embedded[:, 1], c=colors, cmap=cmp, s=1)
-            plt.savefig(dirpath, dpi=600)
-            plt.cla()
+        # if self.global_rank == 0:
+        feats = [item for sublist in outputs for item in sublist][0::2]
+        labels = [item for sublist in outputs for item in sublist][1::2]
+        features = torch.cat(feats, dim=0).cpu().numpy()
+        colors = torch.cat(labels, dim=0).cpu().numpy() + 1
+        print('Number of features: ', len(features))
+        feature_embedded = TSNE(n_components=2, learning_rate='auto', perplexity=3).fit_transform(features)
+        dirpath = os.path.join(self.config['base_dir'], 'tsne')
+        os.makedirs(dirpath, exist_ok=True)
+        dirpath = os.path.join(dirpath, f'{self.current_epoch}.png')
+        plt.scatter(feature_embedded[:, 0], feature_embedded[:, 1], c=colors, cmap=cmp, s=1)
+        plt.savefig(dirpath, dpi=600)
+        plt.cla()
+        dirpath = os.path.join(self.config['base_dir'], 'model')
+        os.makedirs(dirpath, exist_ok=True)
+        torch.save(self.network.state_dict(), os.path.join(dirpath, f'{self.current_epoch}.ckpt'))
+        return {"val_loss": 30-self.current_epoch}
 
     def configure_optimizers(self):
         optimizer = Adam(self.network.parameters(), **self.config['optimizer'])
@@ -204,9 +295,11 @@ class LightningTrainer(pl.LightningModule):
         self.val_dataset = SemanticKITTI(split='valid', config=self.config['val_dataset'])
 
     def train_dataloader(self):
+        self.train_dataset = SemanticKITTI(split='train', config=self.config['dataset'])
         return DataLoader(dataset=self.train_dataset, collate_fn=self.train_dataset._collate_fn, **self.config['train_dataloader'])
 
     def val_dataloader(self):
+        self.val_dataset = SemanticKITTI(split='valid', config=self.config['val_dataset'])
         return DataLoader(dataset=self.val_dataset, collate_fn=self.val_dataset._collate_fn, **self.config['val_dataloader'])
 
     def _load_dataset_info(self) -> None:
@@ -221,12 +314,12 @@ class LightningTrainer(pl.LightningModule):
     def get_model_callback(self):
         dirpath = os.path.join(self.config['base_dir'], 'ckpt')
         os.makedirs(dirpath, exist_ok=True)
-        checkpoint = pl.callbacks.ModelCheckpoint(dirpath=dirpath, save_last=True, filename='epoch-{epoch:02d}', period=1)
-        return [checkpoint]
-
+        checkpoint = pl.callbacks.ModelCheckpoint(filepath=os.path.join(dirpath, 'epoch-{epoch:02d}')) # dirpath=dirpath, save_last=True, filename='epoch-{epoch:02d}', period=1
+        return checkpoint
+            
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--config_path', default='config/training.yaml')
+    parser.add_argument('--config_path', default='config/pretrain/pretrain_bt.yaml')
     parser.add_argument('--dataset_config_path', default='config/dataset/semantickitti.yaml')
     args = parser.parse_args()
 
@@ -246,7 +339,6 @@ if __name__ == '__main__':
     with open(os.path.join(base_dir, 'command'), 'w') as f:
         print(sys.argv, file=f) 
     config['base_dir'] = base_dir
-    torch.cuda.set_device(3)
-    wandb_logger = WandbLogger(config=config, save_dir=config['trainer']['default_root_dir'], **config['logger'])
+    wandb_logger = WandbLogger(save_dir=config['trainer']['default_root_dir'], **config['logger']) # config = config
     model = LightningTrainer(config=config)
-    Trainer(logger=wandb_logger, callbacks=model.get_model_callback(), **config['trainer']).fit(model)
+    Trainer(logger=wandb_logger, checkpoint_callback=model.get_model_callback(), **config['trainer']).fit(model) # callbacks=model.get_model_callback()
