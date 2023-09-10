@@ -12,6 +12,7 @@ from pytorch_lightning.loggers import TensorBoardLogger, WandbLogger
 from pytorch_lightning.utilities import rank_zero_only
 from train_mt import LightningTrainer
 from utils.timer import Timer
+import numpy as np
 
 TIMER_SILENT = True
 
@@ -22,12 +23,16 @@ TIMER_SILENT = True
 #     return odd_mask_1, odd_mask_2
 
 def mix_mask_x(rpz_1, rpz_2, bound=(0, 50), bincount=10):
+    if type(bincount) is list:
+        bincount = np.random.choice(bincount, size=1)[0]
     step = (bound[1] - bound[0]) // bincount
     odd_mask_1 = torch.div(rpz_1[:, 0], step, rounding_mode='floor') % 2 == 1
     odd_mask_2 = torch.div(rpz_2[:, 0], step, rounding_mode='floor') % 2 == 1
     return odd_mask_1, odd_mask_2
 
 def mix_mask_phi(rpz_1, rpz_2, bound=(0, math.pi / 2), bincount=10):
+    if type(bincount) is list:
+        bincount = np.random.choice(bincount, size=1)[0]
     step = (bound[1] - bound[0]) / bincount
     odd_mask_1 = torch.div(torch.arctan(torch.div(rpz_1[:, 2], rpz_1[:, 0])), step, rounding_mode='floor') % 2 == 1
     odd_mask_2 = torch.div(torch.arctan(torch.div(rpz_2[:, 2], rpz_2[:, 0])), step, rounding_mode='floor') % 2 == 1
@@ -198,6 +203,10 @@ class LightningMixTrainer(LightningTrainer):
                 timer.tick('student_output')
                 teacher_output = self(self.teacher, teacher_fea, teacher_rpz, batch_size, unique_invs=teacher_unique_concat_invs, shuffle=teacher_shuffle)
                 timer.tick('teacher_output')
+                threshold = self.config['lasermix']['pseudo_label_threshold']
+                teacher_pseudo_label = generate_pseudo_labels(threshold, teacher_output, teacher_inv_shuffle, teacher_unique_concat_invs, [len(label) for label in teacher_label_ori])
+                student_pseudo_label = generate_pseudo_labels(threshold, student_output, student_inv_shuffle, student_unique_concat_invs, [len(label) for label in student_label_ori])
+                timer.tick('generate_pseudo_label')
             elif 'lasermix' in self.config and self.config['lasermix']['mix_strategy'] == 'scribble':
                 student_output = self(self.student, student_fea, student_rpz, batch_size)
                 timer.tick('student_output')
@@ -208,6 +217,19 @@ class LightningMixTrainer(LightningTrainer):
                 timer.tick('student_output')
                 teacher_output = self(self.teacher, teacher_fea, teacher_rpz, batch_size)
                 timer.tick('teacher_output')
+            elif 'lasermix' in self.config and self.config['lasermix']['mix_strategy'] == 'unc_and_pseudo':
+                student_unique_concat_invs, student_shuffle, student_inv_shuffle = generate_determinent_perm(student_rpz)
+                teacher_unique_concat_invs, teacher_shuffle, teacher_inv_shuffle = generate_determinent_perm(teacher_rpz)
+                timer.tick('generate_determinent_perm')
+                student_output = self(self.student, student_fea, student_rpz, batch_size, unique_invs=student_unique_concat_invs, shuffle=student_shuffle)
+                timer.tick('student_output')
+                teacher_output = self(self.teacher, teacher_fea, teacher_rpz, batch_size, unique_invs=teacher_unique_concat_invs, shuffle=teacher_shuffle)
+                timer.tick('teacher_output')
+                threshold = self.config['lasermix']['pseudo_label_threshold']
+                teacher_pseudo_label = generate_pseudo_labels(threshold, teacher_output, teacher_inv_shuffle, teacher_unique_concat_invs, [len(label) for label in teacher_label_ori])
+                student_pseudo_label = generate_pseudo_labels(threshold, student_output, student_inv_shuffle, student_unique_concat_invs, [len(label) for label in student_label_ori])
+                timer.tick('generate_pseudo_label')
+                
             else:
                 raise NotImplementedError
 
@@ -215,18 +237,20 @@ class LightningMixTrainer(LightningTrainer):
             ls_loss = self.loss_ls(student_output.softmax(1), student_label, ignore=0)
             timer.tick('calculate_loss')
             
-            if 'lasermix' in self.config and self.config['lasermix']['mix_strategy'] == 'pseudo_label':
-                threshold = self.config['lasermix']['pseudo_label_threshold']
-                teacher_pseudo_label = generate_pseudo_labels(threshold, teacher_output, teacher_inv_shuffle, teacher_unique_concat_invs, [len(label) for label in teacher_label_ori])
-                student_pseudo_label = generate_pseudo_labels(threshold, student_output, student_inv_shuffle, student_unique_concat_invs, [len(label) for label in student_label_ori])
-                timer.tick('generate_pseudo_label')
+            # if 'lasermix' in self.config and self.config['lasermix']['mix_strategy'] == 'pseudo_label':
+                # threshold = self.config['lasermix']['pseudo_label_threshold']
+                # teacher_pseudo_label = generate_pseudo_labels(threshold, teacher_output, teacher_inv_shuffle, teacher_unique_concat_invs, [len(label) for label in teacher_label_ori])
+                # student_pseudo_label = generate_pseudo_labels(threshold, student_output, student_inv_shuffle, student_unique_concat_invs, [len(label) for label in student_label_ori])
+                # timer.tick('generate_pseudo_label')
 
             if 'lasermix' in self.config and self.config['lasermix']['mix_strategy'] == 'scribble':
-                (mix_fea, mix_rpz, mix_label) = lasermix_1((student_fea, student_rpz, student_label_ori), (teacher_fea, teacher_rpz, teacher_label_ori), self.config)
+                (mix_fea, mix_rpz, mix_label) = lasermix((student_fea, student_rpz, student_label_ori), (teacher_fea, teacher_rpz, teacher_label_ori), self.config)
             elif 'lasermix' in self.config and self.config['lasermix']['mix_strategy'] == 'pseudo_label':
-                (mix_fea, mix_rpz, mix_label) = lasermix_1((student_fea, student_rpz, student_pseudo_label), (teacher_fea, teacher_rpz, teacher_pseudo_label), self.config)
+                (mix_fea, mix_rpz, mix_label) = lasermix((student_fea, student_rpz, student_pseudo_label), (teacher_fea, teacher_rpz, teacher_pseudo_label), self.config)
             elif 'lasermix' in self.config and self.config['lasermix']['mix_strategy'] == 'unc_label':
-                (mix_fea, mix_rpz, mix_label) = lasermix_1((student_fea, student_rpz, student_label_ori), (teacher_fea, teacher_rpz, teacher_label_ori), self.config)
+                (mix_fea, mix_rpz, mix_label) = lasermix((student_fea, student_rpz, student_label_ori), (teacher_fea, teacher_rpz, teacher_label_ori), self.config)
+            elif 'lasermix' in self.config and self.config['lasermix']['mix_strategy'] == 'unc_and_pseudo':
+                (mix_fea, mix_rpz, mix_label) = lasermix((student_fea, student_rpz, student_label_ori), (teacher_fea, teacher_rpz, teacher_pseudo_label), self.config)
             else:
                 raise NotImplementedError
             timer.tick('lasermix')
@@ -235,28 +259,29 @@ class LightningMixTrainer(LightningTrainer):
             # torch.cuda.empty_cache()
 
             mix_label = torch.cat(mix_label, dim=0)
-            mix_output = self(self.student, mix_fea, mix_rpz, batch_size)
+            # 注意这里的batch_size, 如果不对，会引发 CUDA illegal memory access 错误, 
+            mix_output = self(self.student, mix_fea, mix_rpz, 2 * batch_size)
             timer.tick('mix_output')
 
             mix_loss = self.loss_ls(mix_output.softmax(1), mix_label, ignore=0)
             
-            if 'lasermix' in self.config and self.config['lasermix']['mix_strategy'] == 'scribble':
-                (mix_fea, mix_rpz, mix_label) = lasermix_2((student_fea, student_rpz, student_label_ori), (teacher_fea, teacher_rpz, teacher_label_ori), self.config)
-            elif 'lasermix' in self.config and self.config['lasermix']['mix_strategy'] == 'pseudo_label':
-                (mix_fea, mix_rpz, mix_label) = lasermix_2((student_fea, student_rpz, student_pseudo_label), (teacher_fea, teacher_rpz, teacher_pseudo_label), self.config)
-            elif 'lasermix' in self.config and self.config['lasermix']['mix_strategy'] == 'unc_label':
-                (mix_fea, mix_rpz, mix_label) = lasermix_2((student_fea, student_rpz, student_label_ori), (teacher_fea, teacher_rpz, teacher_label_ori), self.config)
-            else:
-                raise NotImplementedError
-            timer.tick('lasermix')
-            # del student_fea, student_rpz, student_label_ori, teacher_fea, teacher_rpz, teacher_pseudo_label
-            # del teacher_output, student_output, teacher_output_normalized, teacher_output_valid_mask
-            # torch.cuda.empty_cache()
-            mix_label = torch.cat(mix_label, dim=0)
-            mix_output = self(self.student, mix_fea, mix_rpz, batch_size)
-            timer.tick('mix_output')
+            # if 'lasermix' in self.config and self.config['lasermix']['mix_strategy'] == 'scribble':
+            #     (mix_fea, mix_rpz, mix_label) = lasermix_2((student_fea, student_rpz, student_label_ori), (teacher_fea, teacher_rpz, teacher_label_ori), self.config)
+            # elif 'lasermix' in self.config and self.config['lasermix']['mix_strategy'] == 'pseudo_label':
+            #     (mix_fea, mix_rpz, mix_label) = lasermix_2((student_fea, student_rpz, student_pseudo_label), (teacher_fea, teacher_rpz, teacher_pseudo_label), self.config)
+            # elif 'lasermix' in self.config and self.config['lasermix']['mix_strategy'] == 'unc_label':
+            #     (mix_fea, mix_rpz, mix_label) = lasermix_2((student_fea, student_rpz, student_label_ori), (teacher_fea, teacher_rpz, teacher_label_ori), self.config)
+            # else:
+            #     raise NotImplementedError
+            # timer.tick('lasermix')
+            # # del student_fea, student_rpz, student_label_ori, teacher_fea, teacher_rpz, teacher_pseudo_label
+            # # del teacher_output, student_output, teacher_output_normalized, teacher_output_valid_mask
+            # # torch.cuda.empty_cache()
+            # mix_label = torch.cat(mix_label, dim=0)
+            # mix_output = self(self.student, mix_fea, mix_rpz, batch_size)
+            # timer.tick('mix_output')
 
-            mix_loss += self.loss_ls(mix_output.softmax(1), mix_label, ignore=0)
+            # mix_loss += self.loss_ls(mix_output.softmax(1), mix_label, ignore=0)
             
 
             if self.current_epoch >= self.config['lasermix'].get('ignore', 0):
