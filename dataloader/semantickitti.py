@@ -151,7 +151,7 @@ class Cylindrical(Baseline, prefix='cylindrical'):
         r_idx = np.arange(self.spatial_shape[0])
         p_idx = np.arange(self.spatial_shape[1])
         z_idx = np.arange(self.spatial_shape[2])
-        all_rpz = np.array([[[[self.min_bound[0] + r * self.drpz[0] + self.drpz[0]/2, self.min_bound[1] + p * self.drpz[1] + self.drpz[1]/2, self.min_bound[2] + z * self.drpz[2] + self.drpz[2]/2] for r in r_idx] for p in p_idx] for z in z_idx]).reshape(5529600,3)
+        all_rpz = np.array([[[[self.min_bound[0] + r * self.drpz[0] + self.drpz[0]/2, self.min_bound[1] + p * self.drpz[1] + self.drpz[1]/2, self.min_bound[2] + z * self.drpz[2] + self.drpz[2]/2] for r in r_idx] for p in p_idx] for z in z_idx]).reshape(self.spatial_shape[0] * self.spatial_shape[1] * self.spatial_shape[2],3)
         self.all_xyz = self.cyl2cart(all_rpz)
 
 
@@ -204,39 +204,6 @@ class Cylindrical(Baseline, prefix='cylindrical'):
     #         rpz[:, :2] += noise
             
     #     return rpz, all_rpz
-
-    @staticmethod
-    def double_augment(xyz, all_xyz, methods):
-        if 'rotate' in methods:
-            angle = np.deg2rad(np.random.random() * 90) - np.pi / 4
-            c, s = np.cos(angle), np.sin(angle)
-            R = np.matrix([[c, s], [-s, c]])
-            xyz[:, :2] = np.dot(xyz[:, :2], R)
-            all_xyz[:, :2] = np.dot(all_xyz[:, :2], R)
-
-        if 'flip' in methods:
-            direction = np.random.choice(4, 1)
-            if direction == 1:
-                xyz[:, 0] = -xyz[:, 0]
-                all_xyz[:, 0] = -all_xyz[:, 0]
-            elif direction == 2:
-                xyz[:, 1] = -xyz[:, 1]
-                all_xyz[:, 1] = -all_xyz[:, 1]
-            elif direction == 3:
-                xyz[:, :2] = -xyz[:, :2]
-                all_xyz[:, :2] = -all_xyz[:, :2]
-
-        if 'scale' in methods:
-            s = np.random.uniform(0.95, 1.05)
-            xyz[:, :2] = s * xyz[:, :2]
-            all_xyz[:, :2] = s * all_xyz[:, :2]
-
-        if 'noise' in methods:
-            # TODO: add point-wise arbitrary niose, 5% to data range
-            noise = np.array([np.random.normal(0, 0.1, 1), np.random.normal(0, 0.1, 1), np.random.normal(0, 0.1, 1)]).T
-            xyz[:, :3] += noise
-            all_xyz[:, :3] += noise
-        return xyz, all_xyz
     
     def get_cylindrical_scene(self, xyzr, label, aug_methods):
         xyz, intensity = xyzr[:, :3], xyzr[:, 3]
@@ -399,19 +366,13 @@ class CylindricalCluster(Cylindrical, prefix='cylindrical_cluster'):
             (stu_xyzrs, stu_feas),
             cluster
         ]
-        
-# import pointnet2_ops._ext as _ext
 
 class CylindricalTwin(Cylindrical, prefix='cylindrical_twin'):
 
     def __getitem__(self, idx):
         xyzr = self.get_lidar(idx)
-        # label = self.get_label(idx)
-        # pidx = _ext.furthest_point_sampling(torch.from_numpy(xyzr[:, :3]).reshape((1, xyzr.shape[0], 3)).contiguous().cuda(), 1024).reshape(1024).long()
-        # xyzr = xyzr[pidx]
-        # label = xyzr[pidx]
         return [
-            self.get_cylindrical_scene(xyzr, self.config.get('aug', None)),
+            self.get_cylindrical_scene(xyzr, []),
             self.get_cylindrical_scene(xyzr, self.config.get('aug', None))
         ]
     @staticmethod
@@ -424,9 +385,41 @@ class CylindricalTwin(Cylindrical, prefix='cylindrical_twin'):
             (stu_xyzrs, stu_feas, stu_rpzs),
         ]
     
+    @staticmethod
+    def double_augment(xyz, all_xyz, methods):
+        if 'rotate' in methods:
+            angle = np.deg2rad(np.random.random() * 90) - np.pi / 4
+            c, s = np.cos(angle), np.sin(angle)
+            R = np.matrix([[c, s], [-s, c]])
+            xyz[:, :2] = np.dot(xyz[:, :2], R)
+            all_xyz[:, :2] = np.dot(all_xyz[:, :2], R)
+
+        if 'flip' in methods:
+            direction = np.random.choice(4, 1)
+            if direction == 1:
+                xyz[:, 0] = -xyz[:, 0]
+                all_xyz[:, 0] = -all_xyz[:, 0]
+            elif direction == 2:
+                xyz[:, 1] = -xyz[:, 1]
+                all_xyz[:, 1] = -all_xyz[:, 1]
+            elif direction == 3:
+                xyz[:, :2] = -xyz[:, :2]
+                all_xyz[:, :2] = -all_xyz[:, :2]
+
+        if 'scale' in methods:
+            s = np.random.uniform(0.95, 1.05)
+            xyz[:, :2] = s * xyz[:, :2]
+            all_xyz[:, :2] = s * all_xyz[:, :2]
+
+        if 'noise' in methods:
+            noise = np.array([np.random.normal(0, 0.1, 1), np.random.normal(0, 0.1, 1), np.random.normal(0, 0.1, 1)]).T
+            xyz[:, :3] += noise
+            all_xyz[:, :3] += noise
+        return xyz, all_xyz
+    
     def get_cylindrical_scene(self, xyzr, aug_methods):
         xyz, intensity = xyzr[:, :3], xyzr[:, 3]
-        xyz_ = copy.deepcopy(xyz)
+        # xyz_ = copy.deepcopy(xyz)
 
         if self.split == 'train':
             # rpz = self.cart2cyl(xyz)
@@ -437,21 +430,18 @@ class CylindricalTwin(Cylindrical, prefix='cylindrical_twin'):
             # 当时后面一个 scene 应该再 + 前面一个 scene 的 max 值
             # xyz = self.augment(xyz, aug_methods)
             if len(aug_methods) != 0:
-                xyz = self.augment(xyz, aug_methods)
                 
-                # all_xyz_ = copy.deepcopy(self.all_xyz)
-                # xyz, all_xyz_transformed = self.double_augment(xyz, all_xyz_, aug_methods)
-                # all_rpz_transformed = self.cart2cyl(all_xyz_transformed)
-                # clipped_rpz_transformed = np.clip(all_rpz_transformed, self.min_bound, self.max_bound)
-                # # (5529600, 3) -> unique (1712364, 3)
-                # rpz_transformed_discrete = (np.floor((clipped_rpz_transformed - self.min_bound) / self.drpz)).astype(np.int64)
-                # transform_idx = rpz_transformed_discrete[:, 0] + (rpz_transformed_discrete[:, 1] + rpz_transformed_discrete[:, 2] * self.spatial_shape[1]) * self.spatial_shape[0]
-                
-                # transform_idx = []
-                # for i in rpz_transformed_discrete:
-                #     transform_idx.append(i[0] + (i[1] + i[2] * self.spatial_shape[1]) * self.spatial_shape[0])
-                # transform_idx = np.array(transform_idx)
-
+                all_xyz_ = copy.deepcopy(self.all_xyz)
+                xyz, all_xyz_transformed = self.double_augment(xyz, all_xyz_, aug_methods)
+                all_rpz_transformed = self.cart2cyl(all_xyz_transformed)
+                clipped_rpz_transformed = np.clip(all_rpz_transformed, self.min_bound, self.max_bound)
+                rpz_transformed_discrete = (np.floor((clipped_rpz_transformed - self.min_bound) / self.drpz)).astype(np.int64)
+                transform_idx = rpz_transformed_discrete[:, 0] + (rpz_transformed_discrete[:, 1] + rpz_transformed_discrete[:, 2] * self.spatial_shape[1]) * self.spatial_shape[0]
+            else:
+                transform_idx = None
+        else:
+            transform_idx = None
+            
         rpz = self.cart2cyl(xyz)
         clipped_rpz = np.clip(rpz, self.min_bound, self.max_bound)
         rpz_discrete = (np.floor((clipped_rpz - self.min_bound) / self.drpz)).astype(np.int64)
@@ -462,9 +452,7 @@ class CylindricalTwin(Cylindrical, prefix='cylindrical_twin'):
         fea = np.concatenate((centered_rpz, rpz, xyz[:, :2], intensity.reshape(-1, 1)), axis=1)
         return torch.from_numpy(rpz_discrete), \
                torch.from_numpy(fea).float(), \
-               torch.from_numpy(xyz_)
-            #    transform_idx
-            #  torch.from_numpy(rpz_transformed_discrete) if rpz_transformed_discrete is not None else None
+                transform_idx
         
 class CylindricalEMP(Cylindrical, prefix='cylindrical_emp'):
 

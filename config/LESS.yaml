@@ -64,13 +64,13 @@ LESS:
     l_grid: 4
     iter_max: 1000
     percent: 0.8
-    dist: 0.1
-    OOM_bar: 80000   # N points => N^2 float32 in cdist
+    dist: 0.25
+    OOM_bar: 60000   # N points => N^2 float32 in cdist
     z_sort_bar: 0.01   # 规定分位数以下点才可以被选择
   cluster:
     # d: 0.006
-    d: 0.01
-  target_directory: 'LESS_230829_add_z_sort'
+    d: 0.05
+  target_directory: 'LESS_230912_cluster'
   save: False
   save_file_number: 0
   start_number_in_one_seq: 0   # 0 means continue from existing files

@@ -9,7 +9,8 @@ pretrain_loss:
 dataset:
   root_dir: '/data22/tb5zhh/datasets/SemanticKITTI/sequences'
   prefix: cylindrical_twin
-  spatial_shape: [480,360,32]
+  # spatial_shape: [480,360,32]
+  spatial_shape: [120, 90, 8]
   max_bound: [50,3.1415926,2]
   min_bound: [0,-3.1415926,-4]
   aug: ['rotate', 'flip', 'noise']
@@ -19,13 +20,14 @@ val_dataset:
   root_dir: '/data22/tb5zhh/datasets/SemanticKITTI/sequences'
   prefix: cylindrical_sample
   spatial_shape: [480,360,32]
+  # spatial_shape: [120, 90, 8]
   max_bound: [50,3.1415926,2]
   min_bound: [0,-3.1415926,-4]
   aug: []
   bin_size: [[24,9],[48,18],[96,36]]
 
 train_dataloader:
-  batch_size: 8
+  batch_size: 12
   shuffle: True
   num_workers: 8
 
@@ -35,7 +37,7 @@ val_dataloader:
   num_workers: 4
 
 trainer:
-  max_epochs: 75
+  max_epochs: 20
   gpus: -1
   check_val_every_n_epoch: 1
   default_root_dir: '/DATA_EDS2/zhangyk2306'
@@ -44,7 +46,7 @@ trainer:
   accumulate_grad_batches: 1
   num_sanity_val_steps: 10
 
-# load_checkpoint: /DATA_EDS2/zhangyk2306/scribblekitti_tbw/pretrain_bt/20230826-21:20:38/model/0.ckpt
+# load_checkpoint: /DATA_EDS2/zhangyk2306/scribblekitti_tbw/pretrain_bt/20230908-15:04:58/model/2.ckpt
 
 optimizer:
   lr: 0.001

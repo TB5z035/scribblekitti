@@ -194,7 +194,9 @@ class LightningTrainer(pl.LightningModule):
         return {"loss": loss}
     
     def train_transform_voxel_step(self, batch, batch_idx):
-        (rpz_a, fea_a, _, transform), (rpz_b, fea_b, _, _) = batch
+        spatial_shape = [120, 90, 8]
+        # spatial_shape = [60, 45, 4]
+        (rpz_a, fea_a, transform), (rpz_b, fea_b, _) = batch
         
         coords_a = []
         for b in range(len(rpz_a)):
@@ -209,13 +211,15 @@ class LightningTrainer(pl.LightningModule):
         coords_b = torch.cat(coords_b, dim=0)
         
         unique_coords_a, unique_inv_a = torch.unique(coords_a, return_inverse=True, dim=0)
-        unique_coords_a_idx = (unique_coords_a[:, 0] * 5529600 + unique_coords_a[:, 1] + (unique_coords_a[:, 2] + unique_coords_a[:, 3] * 360) * 480).cpu().numpy()
-        unique_feats_a = torch_scatter.scatter_mean(feats_a, unique_inv_a, dim=0)
+        unique_coords_a_idx = (unique_coords_a[:, 0] * spatial_shape[0] * spatial_shape[1] * spatial_shape[2] + unique_coords_a[:, 1] + (unique_coords_a[:, 2] + unique_coords_a[:, 3] * spatial_shape[1]) * spatial_shape[0]).cpu().numpy()
+        # unique_feats_a = torch_scatter.scatter_mean(feats_a, unique_inv_a, dim=0)
+        unique_feats_a = torch_scatter.scatter_max(feats_a, unique_inv_a, dim=0)[0]
         
-        transform[1][:] += 5529600
+        for i in range(len(rpz_a)):
+            transform[i][:] += i * spatial_shape[0] * spatial_shape[1] * spatial_shape[2]
         transform = np.concatenate(transform)
         
-        idx = coords_b[:, 0] * 5529600 + coords_b[:, 1] + (coords_b[:, 2] + coords_b[:, 3] * 360) * 480
+        idx = coords_b[:, 0] * spatial_shape[0] * spatial_shape[1] * spatial_shape[2] + coords_b[:, 1] + (coords_b[:, 2] + coords_b[:, 3] * spatial_shape[1]) * spatial_shape[0]
         coords_b_idx_transformed = transform[idx.cpu().numpy()]
         
         intersect_coords = np.intersect1d(coords_b_idx_transformed, unique_coords_a_idx)
@@ -225,7 +229,8 @@ class LightningTrainer(pl.LightningModule):
         coords_idx_filtered = unique_coords_a_idx[mask_a]
         
         unique_transformed_coords_b, unique_transformed_inv_b = np.unique(coords_b_idx_transformed, return_inverse=True, axis=0)
-        unique_transformed_feats_b = torch_scatter.scatter_mean(feats_b, torch.from_numpy(unique_transformed_inv_b).cuda(), dim=0)
+        # unique_transformed_feats_b = torch_scatter.scatter_mean(feats_b, torch.from_numpy(unique_transformed_inv_b).cuda(), dim=0)
+        unique_transformed_feats_b = torch_scatter.scatter_max(feats_b, torch.from_numpy(unique_transformed_inv_b).cuda(), dim=0)[0]
         idx = []
         for i in coords_idx_filtered:
             idx.append(np.where(unique_transformed_coords_b == i)[0][0])
@@ -234,24 +239,28 @@ class LightningTrainer(pl.LightningModule):
         
         assert feats_a_filtered.shape[0] == feats_b_filtered.shape[0], "filtered voxel number doesn't match"
         
-        mask_scene0 = np.where(coords_a_filtered[:,0].cpu() == 0)[0][-1] + 1
-        fea_a_scene0 = feats_a_filtered[:mask_scene0]
-        coo_a_scene0 = coords_a_filtered[:mask_scene0, 1:]
-        fea_b_scene0 = feats_b_filtered[:mask_scene0]
-        coo_b_scene0 = coords_a_filtered[:mask_scene0, 1:]
+        fea_a_ = []
+        coo_a_ = []
+        fea_b_ = []
+        coo_b_ = []
+        last_idx = 0
+        for i in range(len(rpz_a)):
+            mask_idx = np.where(coords_a_filtered[:,0].cpu() == i)[0][-1] + 1
+            fea_a_.append(feats_a_filtered[last_idx:mask_idx])
+            fea_b_.append(feats_b_filtered[last_idx:mask_idx])
+            coo_a_.append(coords_a_filtered[last_idx:mask_idx, 1:])
         
-        fea_a_scene1 = feats_a_filtered[mask_scene0:]
-        coo_a_scene1 = coords_a_filtered[mask_scene0:, 1:]
-        fea_b_scene1 = feats_b_filtered[mask_scene0:]
-        coo_b_scene1 = coords_a_filtered[mask_scene0:, 1:]
-        
-        output_a, _, _ = self(self.network, (fea_a_scene0, fea_a_scene1), (coo_a_scene0, coo_a_scene1))
-        output_b, _, _ = self(self.network, (fea_b_scene0, fea_b_scene1), (coo_b_scene0, coo_b_scene1))
+        output_a, _, _ = self(self.network, fea_a_, coo_a_)
+        output_b, _, _ = self(self.network, fea_b_, coo_a_)
         
         loss = self.loss(output_a, output_b)
+        self.logger.experiment.log({"#clusters": feats_a_filtered.shape[0]})
+        self.logger.experiment.log({"pretrain_loss": loss})
+        return {"loss": loss}
     
     def training_step(self, batch, batch_idx):
         # return self.train_fps_step(batch, batch_idx)
+        # return self.train_transform_voxel_step(batch, batch_idx)
         return self.train_cluster_step_remove_ground(batch, batch_idx)
 
     def training_epoch_end(self, outputs) -> None:
@@ -319,7 +328,7 @@ class LightningTrainer(pl.LightningModule):
             
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--config_path', default='config/pretrain/pretrain_bt.yaml')
+    parser.add_argument('--config_path', default='config/pretrain/pretrain_bt_cluster.yaml')
     parser.add_argument('--dataset_config_path', default='config/dataset/semantickitti.yaml')
     args = parser.parse_args()
 
