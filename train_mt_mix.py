@@ -89,6 +89,56 @@ def lasermix(data_1, data_2, config):
 
     return tuple(zip(*mixed_data))
 
+def lasermix_same_scene(data_1, data_2, config):
+    if config["lasermix"]["seg_strategy"] == "phi":
+        mix_mask = mix_mask_phi
+    else:
+        mix_mask = mix_mask_x
+    fea_batch_1, rpz_batch_1, label_batch_1 = data_1
+    fea_batch_2, rpz_batch_2, label_batch_2 = data_2
+    assert len(fea_batch_1) == len(fea_batch_2) == len(rpz_batch_1) == len(rpz_batch_2) == len(label_batch_1) == len(label_batch_2), f"{len(fea_batch_1)}, {len(fea_batch_2)}, {len(rpz_batch_1)}, {len(rpz_batch_2)}, {len(label_batch_1)}, {len(label_batch_2)}"
+    # assert len(fea_batch_1) % 2 == 0
+    # batch_size = len(fea_batch_1) // 2
+    batch_size = len(fea_batch_1)
+    mixed_data = []
+    for bi in range(batch_size):
+        with Timer(f'lasermix {bi}', slient=TIMER_SILENT) as timer:
+            fea_a, rpz_a, label_a = fea_batch_1[bi], rpz_batch_1[bi], label_batch_1[bi]
+            fea_b, rpz_b, label_b = fea_batch_2[bi], rpz_batch_2[bi], label_batch_2[bi]
+            timer.tick('split1')
+            odd_mask_a, odd_mask_b = mix_mask(rpz_a, rpz_b, bincount=config["lasermix"]["seg_bincount"])
+            timer.tick('mix_mask1')
+            mixed_data.append((
+                torch.cat([fea_a[odd_mask_a], fea_b[torch.logical_not(odd_mask_b)]], dim=0),
+                torch.cat([rpz_a[odd_mask_a], rpz_b[torch.logical_not(odd_mask_b)]], dim=0),
+                torch.cat([label_a[odd_mask_a], label_b[torch.logical_not(odd_mask_b)]], dim=0),
+            ))
+            
+            mixed_data.append((
+                torch.cat([fea_a[torch.logical_not(odd_mask_a)], fea_b[odd_mask_b]], dim=0),
+                torch.cat([rpz_a[torch.logical_not(odd_mask_a)], rpz_b[odd_mask_b]], dim=0),
+                torch.cat([label_a[torch.logical_not(odd_mask_a)], label_b[odd_mask_b]], dim=0),
+            ))
+            timer.tick('append')
+            # fea_a, rpz_a, label_a = fea_batch_1[bi * 2 + 1], rpz_batch_1[bi * 2 + 1], label_batch_1[bi * 2 + 1]
+            # fea_b, rpz_b, label_b = fea_batch_2[bi * 2], rpz_batch_2[bi * 2], label_batch_2[bi * 2]
+            # timer.tick('split2')
+            # odd_mask_a, odd_mask_b = mix_mask(rpz_a, rpz_b)
+            # timer.tick('mix_mask1')
+            # mixed_data.append((
+            #     torch.cat([fea_a[odd_mask_a], fea_b[torch.logical_not(odd_mask_b)]], dim=0),
+            #     torch.cat([rpz_a[odd_mask_a], rpz_b[torch.logical_not(odd_mask_b)]], dim=0),
+            #     torch.cat([label_a[odd_mask_a], label_b[torch.logical_not(odd_mask_b)]], dim=0),
+            # ))
+            # mixed_data.append((
+            #     torch.cat([fea_a[torch.logical_not(odd_mask_a)], fea_b[odd_mask_b]], dim=0),
+            #     torch.cat([rpz_a[torch.logical_not(odd_mask_a)], rpz_b[odd_mask_b]], dim=0),
+            #     torch.cat([label_a[torch.logical_not(odd_mask_a)], label_b[odd_mask_b]], dim=0),
+            # ))
+            # timer.tick('append2')
+
+    return tuple(zip(*mixed_data))
+
 def lasermix_1(data_1, data_2, config):
     if config["lasermix"]["seg_strategy"] == "phi":
         mix_mask = mix_mask_phi
@@ -227,7 +277,31 @@ class LightningMixTrainer(LightningTrainer):
                 timer.tick('teacher_output')
                 threshold = self.config['lasermix']['pseudo_label_threshold']
                 teacher_pseudo_label = generate_pseudo_labels(threshold, teacher_output, teacher_inv_shuffle, teacher_unique_concat_invs, [len(label) for label in teacher_label_ori])
-                student_pseudo_label = generate_pseudo_labels(threshold, student_output, student_inv_shuffle, student_unique_concat_invs, [len(label) for label in student_label_ori])
+                # student_pseudo_label = generate_pseudo_labels(threshold, student_output, student_inv_shuffle, student_unique_concat_invs, [len(label) for label in student_label_ori])
+                timer.tick('generate_pseudo_label')
+            elif 'lasermix' in self.config and self.config['lasermix']['mix_strategy'] == 'same_aug':
+                student_unique_concat_invs, student_shuffle, student_inv_shuffle = generate_determinent_perm(student_rpz)
+                teacher_unique_concat_invs, teacher_shuffle, teacher_inv_shuffle = generate_determinent_perm(teacher_rpz)
+                timer.tick('generate_determinent_perm')
+                student_output = self(self.student, student_fea, student_rpz, batch_size, unique_invs=student_unique_concat_invs, shuffle=student_shuffle)
+                timer.tick('student_output')
+                teacher_output = self(self.teacher, teacher_fea, teacher_rpz, batch_size, unique_invs=teacher_unique_concat_invs, shuffle=teacher_shuffle)
+                timer.tick('teacher_output')
+                threshold = self.config['lasermix']['pseudo_label_threshold']
+                teacher_pseudo_label = generate_pseudo_labels(threshold, teacher_output, teacher_inv_shuffle, teacher_unique_concat_invs, [len(label) for label in teacher_label_ori])
+                # student_pseudo_label = generate_pseudo_labels(threshold, student_output, student_inv_shuffle, student_unique_concat_invs, [len(label) for label in student_label_ori])
+                timer.tick('generate_pseudo_label')
+            elif 'lasermix' in self.config and self.config['lasermix']['mix_strategy'] == 'same_scene':
+                student_unique_concat_invs, student_shuffle, student_inv_shuffle = generate_determinent_perm(student_rpz)
+                teacher_unique_concat_invs, teacher_shuffle, teacher_inv_shuffle = generate_determinent_perm(teacher_rpz)
+                timer.tick('generate_determinent_perm')
+                student_output = self(self.student, student_fea, student_rpz, batch_size, unique_invs=student_unique_concat_invs, shuffle=student_shuffle)
+                timer.tick('student_output')
+                teacher_output = self(self.teacher, teacher_fea, teacher_rpz, batch_size, unique_invs=teacher_unique_concat_invs, shuffle=teacher_shuffle)
+                timer.tick('teacher_output')
+                threshold = self.config['lasermix']['pseudo_label_threshold']
+                teacher_pseudo_label = generate_pseudo_labels(threshold, teacher_output, teacher_inv_shuffle, teacher_unique_concat_invs, [len(label) for label in teacher_label_ori])
+                # student_pseudo_label = generate_pseudo_labels(threshold, student_output, student_inv_shuffle, student_unique_concat_invs, [len(label) for label in student_label_ori])
                 timer.tick('generate_pseudo_label')
                 
             else:
@@ -251,6 +325,10 @@ class LightningMixTrainer(LightningTrainer):
                 (mix_fea, mix_rpz, mix_label) = lasermix((student_fea, student_rpz, student_label_ori), (teacher_fea, teacher_rpz, teacher_label_ori), self.config)
             elif 'lasermix' in self.config and self.config['lasermix']['mix_strategy'] == 'unc_and_pseudo':
                 (mix_fea, mix_rpz, mix_label) = lasermix((student_fea, student_rpz, student_label_ori), (teacher_fea, teacher_rpz, teacher_pseudo_label), self.config)
+            elif 'lasermix' in self.config and self.config['lasermix']['mix_strategy'] == 'same_aug':
+                (mix_fea, mix_rpz, mix_label) = lasermix((teacher_fea, teacher_rpz, teacher_label_ori), (teacher_fea, teacher_rpz, teacher_pseudo_label), self.config)
+            elif 'lasermix' in self.config and self.config['lasermix']['mix_strategy'] == 'same_scene':
+                (mix_fea, mix_rpz, mix_label) = lasermix_same_scene((student_fea, student_rpz, student_label_ori), (teacher_fea, teacher_rpz, teacher_pseudo_label), self.config)
             else:
                 raise NotImplementedError
             timer.tick('lasermix')
@@ -259,7 +337,7 @@ class LightningMixTrainer(LightningTrainer):
             # torch.cuda.empty_cache()
 
             mix_label = torch.cat(mix_label, dim=0)
-            # 注意这里的batch_size, 如果不对，会引发 CUDA illegal memory access 错误, 
+            # 注意这里的batch_size, 如果不对, 比如少乘了2，会引发 CUDA illegal memory access 错误, 让人一下子不知道从哪里开始debug
             mix_output = self(self.student, mix_fea, mix_rpz, 2 * batch_size)
             timer.tick('mix_output')
 

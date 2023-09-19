@@ -1,0 +1,64 @@
+model:
+  in_feat: 9
+  hid_feat: 32
+
+lasermix: 
+  mix_strategy: same_scene
+  pseudo_label_threshold: 0.8
+  seg_strategy: phi
+  seg_bincount: [4,5,6,7,8]
+  mix_loss_coe: 0.1
+
+dataset:
+  root_dir: 'data/sequences'
+  prefix: cylindrical_mt
+  label_directory: scribbles
+  spatial_shape: [480,360,32]
+  max_bound: [50,3.1415926,2]
+  min_bound: [0,-3.1415926,-4]
+  aug:
+    student: ['rotate', 'flip', 'scale', 'noise']
+    teacher: ['rotate', 'flip']
+  bin_size: [[24,9],[48,18],[96,36]]
+
+val_dataset:
+  root_dir: 'data/sequences'
+  prefix: cylindrical_mt
+  label_directory: unc
+  spatial_shape: [480,360,32]
+  max_bound: [50,3.1415926,2]
+  min_bound: [0,-3.1415926,-4]
+  bin_size: [[24,9],[48,18],[96,36]]
+
+train_dataloader:
+  batch_size: 8
+  shuffle: True
+  num_workers: 8
+  drop_last: True
+
+val_dataloader:
+  batch_size: 8
+  shuffle: False
+  num_workers: 8
+
+test_dataloader:
+  batch_size: 1
+  shuffle: False
+  num_workers: 4
+
+trainer:
+  max_epochs: 75
+  gpus: -1
+  check_val_every_n_epoch: 1
+  default_root_dir: 'output'
+  accelerator: 'ddp'
+  sync_batchnorm: True
+  accumulate_grad_batches: 1
+  num_sanity_val_steps: 1
+
+optimizer:
+  lr: 0.0001
+
+logger:
+  project: 'scribblekitti_mix_cyh'
+  name: 'placeholder'
