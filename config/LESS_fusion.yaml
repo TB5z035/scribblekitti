@@ -73,10 +73,11 @@ LESS:
   target_directory_2: 'LESS_230804_weak_ground_fixed'
   target_directory_3: 'LESS_230730_weak_ground_fixed'
   target_directory_4: 'LESS_230726_single_scan'
-  fusion_target_directory: 'LESS_230827_fusion_attempt_propogated'
+  fusion_target_directory: 'LESS_230916_only_superpoint_propogated'
   save: False
   save_file_number: 0
-  start_number_in_one_seq: 0   # 0 means continue from existing files
   # 640 1430 2220 3010 3800 4480 2950 2990 2935 3772 3793 3785
   print_detail: False
   add_list: [9,11,15,17,13,10]
+  start_number_in_one_seq: 1200   # 0 means continue from existing files
+  process_len_in_on_seq: 200

@@ -60,7 +60,7 @@ logger:
 #                 τ (u, v) = max(ru, rv) × d
 LESS:
   RANSAC:
-    scans_per_subsequence: 5    
+    scans_per_subsequence: 1    
     l_grid: 5
     iter_max: 10000
     percent: 0.8
@@ -68,9 +68,9 @@ LESS:
     OOM_bar: 9122900   # N points => N^2 float32 in cdist
     z_sort_bar: 0.1   # 规定分位数以下点才可以被选择
   cluster:
-    d: 0.01
+    d: 0.05
   target_directory: 'LESS_230810_add_z_sort'
-  save: False
+  save: True
   save_file_number: 0
   start_number_in_one_seq: 3785   # 0 means continue from existing files
   # 640 1430 2220 3010 3800 4480 2950 2990 2935 3772 3793 3785

@@ -56,7 +56,7 @@ val_dataset:
 
 
 train_dataloader:
-  batch_size: 2
+  batch_size: 4
   shuffle: True
   num_workers: 8
 
@@ -78,7 +78,7 @@ trainer:
   default_root_dir: 'output'
   accelerator: 'ddp'
   sync_batchnorm: True
-  accumulate_grad_batches: 2
+  accumulate_grad_batches: 1
   num_sanity_val_steps: 1
 # load_checkpoint: '/home/yujc/scribble/scribblekitti/output/scribblekitti_yjc/cylinder3d_mt_LESS/20230727-09:37:07/ckpt/epoch=5-val_teacher_miou=55.46.ckpt'
 # load_checkpoint: '/home/yujc/scribble/scribblekitti/output/scribblekitti_yjc/cylinder3d_mt_LESS/20230727-15:51:10/ckpt/epoch=3-val_teacher_miou=55.09.ckpt'

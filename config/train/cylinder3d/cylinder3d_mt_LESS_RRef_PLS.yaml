@@ -1,10 +1,10 @@
 model:
-  in_feat: 9
+  in_feat: 39
   hid_feat: 32
 
 dataset:
   root_dir: '/data22/tb5zhh/datasets/SemanticKITTI/sequences'
-  prefix: cylindrical_less
+  prefix: cylindrical_less_reflect_ref_pls
   label_directory: scribbles
   spatial_shape: [480,360,32]
   max_bound: [50,3.1415926,2]
@@ -14,11 +14,12 @@ dataset:
     teacher: ['rotate', 'flip']
   bin_size: [[24,9],[48,18],[96,36]]
   # LESS_target_diretory: 'LESS_230804_weak_ground_fixed'
-  # LESS_target_diretory: 'LESS_230827_fusion_attempt_propogated'
-  LESS_target_diretory: 'LESS_230916_only_superpoint_propogated'
+  LESS_target_diretory: 'LESS_230810_add_z_sort'
+
+
 val_dataset:
   root_dir: '/data22/tb5zhh/datasets/SemanticKITTI/sequences'
-  prefix: cylindrical_mt
+  prefix: reflec_refpls_cylindrical_mt
   label_directory: labels
   spatial_shape: [480,360,32] 
   max_bound: [50,3.1415926,2]
@@ -72,13 +73,13 @@ test_dataloader:
 
 trainer:
   max_epochs: 75
-  # gpus: [0]
+  # gpus: [7]
   gpus: -1
   check_val_every_n_epoch: 1
   default_root_dir: 'output'
   accelerator: 'ddp'
   sync_batchnorm: True
-  accumulate_grad_batches: 2
+  accumulate_grad_batches: 1
   num_sanity_val_steps: 1
 # load_checkpoint: '/home/yujc/scribble/scribblekitti/output/scribblekitti_yjc/cylinder3d_mt_LESS/20230727-09:37:07/ckpt/epoch=5-val_teacher_miou=55.46.ckpt'
 # load_checkpoint: '/home/yujc/scribble/scribblekitti/output/scribblekitti_yjc/cylinder3d_mt_LESS/20230727-15:51:10/ckpt/epoch=3-val_teacher_miou=55.09.ckpt'
@@ -95,12 +96,13 @@ Weighted_focal_loss:
 Propogated_Ignore_Index: []  # 810
 drop_percent: 0   # the percent of random drop points which don't calculate loss.
 
+
 optimizer:
   lr: 0.001
 
 logger:
   project: 'scribblekitti_LESS'
-  name: 'LESS_230916_only_superpoint_propogated'
+  name: 'weak_label_add_in_train'
 
 Mean_Teacher:
   alpha: 0.99      # Origin is 0.99

@@ -13,6 +13,7 @@ class PartialConsistencyLoss(nn.Module):
         loss_s = self.compute_supervised_loss(student_output, student_label)
         if label_group != None:
             mask = label_group == 0
+            # mask = mask.clone() + label_group == 3
         else:
             # mask = student_label == self.ignore_index
             mask = student_label == 0

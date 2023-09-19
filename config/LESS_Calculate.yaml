@@ -74,7 +74,7 @@ LESS:
     z_sort_bar: 0.1   # 规定分位数以下点才可以被选择
   cluster:
     d: 0.01
-  target_directory: 'LESS_230716'
+  target_directory: 'LESS_230916_only_superpoint_propogated'
   save: False
   save_file_number: 0
   start_number_in_one_seq: 3785   # 0 means continue from existing files

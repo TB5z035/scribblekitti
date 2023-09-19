@@ -96,7 +96,7 @@ class LightningTrainer(pl.LightningModule):
         # loss = cl_loss + (ls_loss + loss_ls_propoageted)/2 + loss_propogated + 0.5 * loss_weak + 0.25 * loss_weak_entropy
         # loss = cl_loss + (ls_loss + loss_ls_propoageted)/2 + loss_propogated + loss_weak + loss_weak_entropy
         # loss = cl_loss + (ls_loss + loss_ls_propoageted)/2 + loss_propogated + 0.5 * loss_weak + 0.25 * loss_weak_entropy
-        loss = cl_loss + (ls_loss + loss_ls_propoageted)/2 + loss_propogated + 0.5 * loss_weak + 0.5 * loss_weak_entropy
+        loss = cl_loss + (ls_loss + loss_ls_propoageted)/2 + loss_propogated + 0.5 * loss_weak + 0.25 * loss_weak_entropy
 
         # loss = cl_loss + ls_loss + loss_propogated + 0.5 * loss_weak      # => 60.4
         # loss = cl_loss + ls_loss + loss_propogated + 0.5 * loss_weak + 0.25 * loss_weak_entropy       # => 61.4
@@ -217,7 +217,7 @@ class LightningTrainer(pl.LightningModule):
     
 if __name__=='__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--config_path', default='config/train/cylinder3d/cylinder3d_mt_LESS.yaml')
+    parser.add_argument('--config_path', default='config/train/cylinder3d/cylinder3d_mt_LESS_wait919.yaml')
     parser.add_argument('--dataset_config_path', default='config/dataset/semantickitti.yaml')
     args = parser.parse_args()
 
