@@ -3,16 +3,16 @@ model:
   hid_feat: 32
 
 lasermix: 
-  mix_strategy: unc_and_pseudo
+  mix_strategy: scribble
   pseudo_label_threshold: 0.8
   seg_strategy: phi
-  seg_bincount: 50
+  seg_bincount: 100
   mix_loss_coe: 0.05
 
 dataset:
   root_dir: 'data/sequences'
   prefix: cylindrical_mt
-  label_directory: unc
+  label_directory: scribbles
   spatial_shape: [480,360,32]
   max_bound: [50,3.1415926,2]
   min_bound: [0,-3.1415926,-4]
@@ -24,7 +24,7 @@ dataset:
 val_dataset:
   root_dir: 'data/sequences'
   prefix: cylindrical_mt
-  label_directory: labels
+  label_directory: unc
   spatial_shape: [480,360,32]
   max_bound: [50,3.1415926,2]
   min_bound: [0,-3.1415926,-4]
@@ -57,7 +57,7 @@ trainer:
   num_sanity_val_steps: 1
 
 optimizer:
-  lr: 0.0001
+  lr: 0.001
 
 logger:
   project: 'scribblekitti_mix_cyh'

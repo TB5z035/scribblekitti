@@ -225,6 +225,29 @@ def generate_pseudo_labels(threshold, output, shuffle_inv, unique_inv, split_cou
     pseudo_label = torch.split(pseudo_label, split_count, dim=0)
     return pseudo_label
 
+color_map_label = {
+  0: [0,0,0],
+  1: [245, 150, 100],
+  2: [245, 230, 100],
+  3: [150, 60, 30],
+  4: [180, 30, 80],
+  5: [255, 0, 0],
+  6: [30, 30, 255],
+  7: [200, 40, 255],
+  8: [90, 30, 150],
+  9: [255, 0, 255],
+  10: [255, 150, 255],
+  11: [75, 0, 75],
+  12: [75, 0, 175],
+  13: [0, 200, 255],
+  14: [50, 120, 255],
+  15: [0, 175, 0],
+  16: [0, 60, 135],
+  17: [80, 240, 150],
+  18: [150, 240, 255],
+  19: [0, 0, 255]
+}
+
 class LightningMixTrainer(LightningTrainer):
 
     def forward(self, model, fea, pos, batch_size, unique_invs=None, shuffle=None):
@@ -257,17 +280,12 @@ class LightningMixTrainer(LightningTrainer):
                 teacher_pseudo_label = generate_pseudo_labels(threshold, teacher_output, teacher_inv_shuffle, teacher_unique_concat_invs, [len(label) for label in teacher_label_ori])
                 student_pseudo_label = generate_pseudo_labels(threshold, student_output, student_inv_shuffle, student_unique_concat_invs, [len(label) for label in student_label_ori])
                 timer.tick('generate_pseudo_label')
-            elif 'lasermix' in self.config and self.config['lasermix']['mix_strategy'] == 'scribble':
+            elif 'lasermix' in self.config and self.config['lasermix']['mix_strategy'] in ['scribble', "unc_label"]:
                 student_output = self(self.student, student_fea, student_rpz, batch_size)
                 timer.tick('student_output')
                 teacher_output = self(self.teacher, teacher_fea, teacher_rpz, batch_size)
                 timer.tick('teacher_output')
-            elif 'lasermix' in self.config and self.config['lasermix']['mix_strategy'] == 'unc_label':
-                student_output = self(self.student, student_fea, student_rpz, batch_size)
-                timer.tick('student_output')
-                teacher_output = self(self.teacher, teacher_fea, teacher_rpz, batch_size)
-                timer.tick('teacher_output')
-            elif 'lasermix' in self.config and self.config['lasermix']['mix_strategy'] == 'unc_and_pseudo':
+            elif 'lasermix' in self.config and self.config['lasermix']['mix_strategy'] in ['scribble_and_pseudo', "unc_and_pseudo"]:
                 student_unique_concat_invs, student_shuffle, student_inv_shuffle = generate_determinent_perm(student_rpz)
                 teacher_unique_concat_invs, teacher_shuffle, teacher_inv_shuffle = generate_determinent_perm(teacher_rpz)
                 timer.tick('generate_determinent_perm')
@@ -279,7 +297,7 @@ class LightningMixTrainer(LightningTrainer):
                 teacher_pseudo_label = generate_pseudo_labels(threshold, teacher_output, teacher_inv_shuffle, teacher_unique_concat_invs, [len(label) for label in teacher_label_ori])
                 # student_pseudo_label = generate_pseudo_labels(threshold, student_output, student_inv_shuffle, student_unique_concat_invs, [len(label) for label in student_label_ori])
                 timer.tick('generate_pseudo_label')
-            elif 'lasermix' in self.config and self.config['lasermix']['mix_strategy'] == 'same_aug':
+            elif 'lasermix' in self.config and self.config['lasermix']['mix_strategy'] in ['scribble_same_aug', "unc_same_aug"]:
                 student_unique_concat_invs, student_shuffle, student_inv_shuffle = generate_determinent_perm(student_rpz)
                 teacher_unique_concat_invs, teacher_shuffle, teacher_inv_shuffle = generate_determinent_perm(teacher_rpz)
                 timer.tick('generate_determinent_perm')
@@ -291,7 +309,7 @@ class LightningMixTrainer(LightningTrainer):
                 teacher_pseudo_label = generate_pseudo_labels(threshold, teacher_output, teacher_inv_shuffle, teacher_unique_concat_invs, [len(label) for label in teacher_label_ori])
                 # student_pseudo_label = generate_pseudo_labels(threshold, student_output, student_inv_shuffle, student_unique_concat_invs, [len(label) for label in student_label_ori])
                 timer.tick('generate_pseudo_label')
-            elif 'lasermix' in self.config and self.config['lasermix']['mix_strategy'] == 'same_scene':
+            elif 'lasermix' in self.config and self.config['lasermix']['mix_strategy'] in ['scribble_same_scene', 'unc_same_scene']:
                 student_unique_concat_invs, student_shuffle, student_inv_shuffle = generate_determinent_perm(student_rpz)
                 teacher_unique_concat_invs, teacher_shuffle, teacher_inv_shuffle = generate_determinent_perm(teacher_rpz)
                 timer.tick('generate_determinent_perm')
@@ -317,17 +335,15 @@ class LightningMixTrainer(LightningTrainer):
                 # student_pseudo_label = generate_pseudo_labels(threshold, student_output, student_inv_shuffle, student_unique_concat_invs, [len(label) for label in student_label_ori])
                 # timer.tick('generate_pseudo_label')
 
-            if 'lasermix' in self.config and self.config['lasermix']['mix_strategy'] == 'scribble':
+            if 'lasermix' in self.config and self.config['lasermix']['mix_strategy'] in ['scribble', 'unc_label']:
                 (mix_fea, mix_rpz, mix_label) = lasermix((student_fea, student_rpz, student_label_ori), (teacher_fea, teacher_rpz, teacher_label_ori), self.config)
             elif 'lasermix' in self.config and self.config['lasermix']['mix_strategy'] == 'pseudo_label':
                 (mix_fea, mix_rpz, mix_label) = lasermix((student_fea, student_rpz, student_pseudo_label), (teacher_fea, teacher_rpz, teacher_pseudo_label), self.config)
-            elif 'lasermix' in self.config and self.config['lasermix']['mix_strategy'] == 'unc_label':
-                (mix_fea, mix_rpz, mix_label) = lasermix((student_fea, student_rpz, student_label_ori), (teacher_fea, teacher_rpz, teacher_label_ori), self.config)
-            elif 'lasermix' in self.config and self.config['lasermix']['mix_strategy'] == 'unc_and_pseudo':
+            elif 'lasermix' in self.config and self.config['lasermix']['mix_strategy'] in ['scribble_and_pseudo', 'unc_and_pseudo']:
                 (mix_fea, mix_rpz, mix_label) = lasermix((student_fea, student_rpz, student_label_ori), (teacher_fea, teacher_rpz, teacher_pseudo_label), self.config)
-            elif 'lasermix' in self.config and self.config['lasermix']['mix_strategy'] == 'same_aug':
+            elif 'lasermix' in self.config and self.config['lasermix']['mix_strategy'] in ['scribble_same_aug', 'unc_same_aug']:
                 (mix_fea, mix_rpz, mix_label) = lasermix((teacher_fea, teacher_rpz, teacher_label_ori), (teacher_fea, teacher_rpz, teacher_pseudo_label), self.config)
-            elif 'lasermix' in self.config and self.config['lasermix']['mix_strategy'] == 'same_scene':
+            elif 'lasermix' in self.config and self.config['lasermix']['mix_strategy'] in ['scribble_same_scene', 'unc_same_scene']:
                 (mix_fea, mix_rpz, mix_label) = lasermix_same_scene((student_fea, student_rpz, student_label_ori), (teacher_fea, teacher_rpz, teacher_pseudo_label), self.config)
             else:
                 raise NotImplementedError
